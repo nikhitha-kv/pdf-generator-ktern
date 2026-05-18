@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KTern Enterprise AI Document Workspace</title>
+  <meta name="description" content="Multi-Agent Enterprise Document Intelligence Platform powered by KaarTech" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+
+<!-- Toast Container -->
+<div id="toastContainer" class="toast-container"></div>
+
+<!-- App Shell -->
+<div class="app-shell" id="appShell">
+
+  <!-- ═══════════════════════════════════════ LEFT SIDEBAR ═══ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-inner">
+
+      <!-- Brand -->
+      <div class="sidebar-brand">
+        <div class="brand-logo">
+          <span class="logo-k">K</span><span class="logo-tern">Tern</span>
+        </div>
+        <div class="brand-sub">by KaarTech</div>
+        <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" title="Collapse sidebar">
+          <i class="fa-solid fa-chevron-left"></i>
+        </button>
+      </div>
+
+      <!-- New Chat -->
+      <button class="new-chat-btn" id="newChatBtn">
+        <i class="fa-solid fa-plus"></i>
+        <span>New Chat</span>
+      </button>
+
+      <!-- Search -->
+      <div class="sidebar-search">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" id="searchChats" placeholder="Search conversations..." />
+      </div>
+
+      <!-- Pinned Templates -->
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">
+          <i class="fa-solid fa-bolt"></i> Quick Templates
+        </div>
+        <div class="template-list">
+          <button class="template-item" data-prompt="Generate a comprehensive SAP ECC to S/4HANA migration proposal for a manufacturing company including timeline, risks, and KTern automation benefits">
+            <i class="fa-solid fa-building"></i>
+            <span>SAP Migration Proposal</span>
+          </button>
+          <button class="template-item" data-prompt="Generate a Functional Requirements Specification (FRS) document for an enterprise SAP implementation project">
+            <i class="fa-solid fa-file-lines"></i>
+            <span>FRS Generator</span>
+          </button>
+          <button class="template-item" data-prompt="Create a Business Requirements Document (BRD) for a digital transformation initiative">
+            <i class="fa-solid fa-briefcase"></i>
+            <span>BRD Creation</span>
+          </button>
+          <button class="template-item" data-prompt="Generate a Project Charter document for an enterprise SAP S/4HANA implementation">
+            <i class="fa-solid fa-flag"></i>
+            <span>Project Charter</span>
+          </button>
+          <button class="template-item" data-prompt="Create a User Acceptance Testing (UAT) plan and test case document for SAP go-live">
+            <i class="fa-solid fa-check-double"></i>
+            <span>UAT Generator</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Recent Conversations -->
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">
+          <i class="fa-solid fa-clock-rotate-left"></i> Recent
+        </div>
+        <div class="conversation-list" id="conversationList">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <!-- Sidebar Footer -->
+      <div class="sidebar-footer">
+        <button class="sidebar-footer-btn" id="themeToggleBtn" title="Toggle theme">
+          <i class="fa-solid fa-moon" id="themeIcon"></i>
+          <span>Dark Mode</span>
+        </button>
+        <button class="sidebar-footer-btn" title="Settings">
+          <i class="fa-solid fa-gear"></i>
+          <span>Settings</span>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Sidebar collapsed toggle -->
+  <button class="sidebar-expand-btn hidden" id="sidebarExpandBtn" title="Expand sidebar">
+    <i class="fa-solid fa-chevron-right"></i>
+  </button>
+
+  <!-- ═══════════════════════════════════════ CENTER CHAT ═══ -->
+  <main class="chat-panel" id="chatPanel">
+
+    <!-- Chat Header -->
+    <div class="chat-header">
+      <div class="chat-header-left">
+        <div class="chat-title-group">
+          <h1 class="chat-title" id="chatTitle">KTern Enterprise AI</h1>
+          <span class="chat-subtitle">Multi-Agent Document Intelligence</span>
+        </div>
+      </div>
+      <div class="chat-header-right">
+        <div class="model-badge">
+          <span class="model-dot"></span>
+          <span id="activeModel">AI Ready</span>
+        </div>
+        <button class="icon-btn" id="toggleDocPanel" title="Toggle document panel">
+          <i class="fa-solid fa-sidebar-flip"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Chat Messages -->
+    <div class="chat-messages" id="chatMessages">
+
+      <!-- Welcome State -->
+      <div class="welcome-state" id="welcomeState">
+        <div class="welcome-logo">
+          <div class="welcome-logo-icon">
+            <span class="logo-k">K</span><span class="logo-tern">Tern</span>
+          </div>
+          <div class="welcome-logo-sub">Enterprise AI Document Workspace</div>
+        </div>
+        <h2 class="welcome-title">What document shall we create today?</h2>
+        <p class="welcome-desc">Describe your enterprise document need in plain language. The AI will generate, refine, and export it as a professional PDF.</p>
+        <div class="welcome-suggestions">
+          <button class="suggestion-chip" data-prompt="Generate SAP ECC to S/4HANA migration proposal">
+            <i class="fa-solid fa-arrow-right-arrow-left"></i>
+            SAP Migration Proposal
+          </button>
+          <button class="suggestion-chip" data-prompt="Create a business requirements document for digital transformation">
+            <i class="fa-solid fa-file-contract"></i>
+            BRD for Digital Transformation
+          </button>
+          <button class="suggestion-chip" data-prompt="Generate a project charter for enterprise SAP implementation">
+            <i class="fa-solid fa-rocket"></i>
+            Project Charter
+          </button>
+          <button class="suggestion-chip" data-prompt="Create UAT test plan for SAP S/4HANA go-live">
+            <i class="fa-solid fa-vial-circle-check"></i>
+            UAT Test Plan
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Follow-up Suggestions -->
+    <div class="followup-bar hidden" id="followupBar">
+      <div class="followup-chips" id="followupChips">
+        <button class="followup-chip" data-prompt="Add a detailed migration timeline with phases">
+          <i class="fa-solid fa-calendar-days"></i> Add Timeline
+        </button>
+        <button class="followup-chip" data-prompt="Add risk analysis and mitigation strategies">
+          <i class="fa-solid fa-triangle-exclamation"></i> Add Risks
+        </button>
+        <button class="followup-chip" data-prompt="Add architecture diagram description">
+          <i class="fa-solid fa-diagram-project"></i> Add Architecture
+        </button>
+        <button class="followup-chip" data-prompt="Include KTern automation tools and benefits">
+          <i class="fa-solid fa-robot"></i> Add KTern Automation
+        </button>
+        <button class="followup-chip" data-prompt="Convert to manufacturing industry domain">
+          <i class="fa-solid fa-industry"></i> Manufacturing Domain
+        </button>
+        <button class="followup-chip" data-prompt="Reduce the timeline and make it more aggressive">
+          <i class="fa-solid fa-bolt"></i> Reduce Timeline
+        </button>
+      </div>
+    </div>
+
+    <!-- Chat Input -->
+    <div class="chat-input-area">
+      <div class="chat-input-container">
+        <button class="input-action-btn" title="Attach file">
+          <i class="fa-solid fa-paperclip"></i>
+        </button>
+        <textarea
+          id="chatInput"
+          class="chat-textarea"
+          placeholder="Describe the enterprise document you need... (e.g. Generate SAP migration proposal)"
+          rows="1"
+        ></textarea>
+        <button class="input-action-btn" title="Voice input">
+          <i class="fa-solid fa-microphone"></i>
+        </button>
+        <button class="send-btn" id="sendBtn" disabled>
+          <i class="fa-solid fa-paper-plane"></i>
+        </button>
+      </div>
+      <div class="input-footer">
+        <span>Press <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to send</span>
+        <span>Powered by OpenRouter AI · KaarTech</span>
+      </div>
+    </div>
+  </main>
+
+  <!-- ═══════════════════════════════════════ RIGHT DOC PANEL ═══ -->
+  <aside class="doc-panel" id="docPanel">
+    <div class="doc-panel-inner">
+
+      <!-- Doc Panel Header -->
+      <div class="doc-panel-header">
+        <div class="doc-panel-title-group">
+          <span class="doc-panel-icon"><i class="fa-solid fa-file-lines"></i></span>
+          <div>
+            <div class="doc-panel-title" id="docPanelTitle">Document Workspace</div>
+            <div class="doc-panel-status" id="docPanelStatus">Awaiting input...</div>
+          </div>
+        </div>
+        <div class="doc-panel-actions">
+          <button class="icon-btn" id="downloadPdfBtn" title="Download PDF" disabled>
+            <i class="fa-solid fa-download"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Doc Panel Tabs -->
+      <div class="doc-tabs">
+        <button class="doc-tab active" data-tab="preview" id="tabPreview">
+          <i class="fa-solid fa-eye"></i> Preview
+        </button>
+        <button class="doc-tab" data-tab="agents" id="tabAgents">
+          <i class="fa-solid fa-diagram-project"></i> Agents
+        </button>
+        <button class="doc-tab" data-tab="versions" id="tabVersions">
+          <i class="fa-solid fa-code-branch"></i> Versions
+        </button>
+        <button class="doc-tab" data-tab="json" id="tabJson">
+          <i class="fa-solid fa-code"></i> JSON
+        </button>
+      </div>
+
+      <!-- Tab Content: Preview -->
+      <div class="doc-tab-content active" id="tabContentPreview">
+        <div class="doc-empty-state" id="docEmptyState">
+          <i class="fa-solid fa-file-circle-plus"></i>
+          <p>Your enterprise document will appear here as it's generated</p>
+          <span>Start a conversation to begin</span>
+        </div>
+        <div class="doc-content hidden" id="docContent">
+          <!-- Cover -->
+          <div class="doc-cover" id="docCover">
+            <div class="doc-cover-ktern">
+              <span class="logo-k">K</span><span class="logo-tern">Tern</span>
+            </div>
+            <div class="doc-cover-client" id="docCoverClient">KaarTech</div>
+            <div class="doc-cover-title" id="docCoverTitle">Enterprise Document</div>
+            <div class="doc-cover-date" id="docCoverDate"></div>
+            <div class="doc-cover-badge">AI-Generated · Confidential</div>
+          </div>
+
+          <!-- Sections -->
+          <div class="doc-sections" id="docSections">
+            <!-- Dynamically inserted sections -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content: Agents -->
+      <div class="doc-tab-content" id="tabContentAgents">
+        <div class="agent-pipeline" id="agentPipeline">
+          <div class="pipeline-idle">
+            <i class="fa-solid fa-circle-nodes"></i>
+            <p>Agent pipeline will activate when generation starts</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content: Versions -->
+      <div class="doc-tab-content" id="tabContentVersions">
+        <div class="versions-empty" id="versionsEmpty">
+          <i class="fa-solid fa-code-branch"></i>
+          <p>No versions yet. Versions are saved automatically as the document evolves.</p>
+        </div>
+        <div class="versions-list" id="versionsList"></div>
+      </div>
+
+      <!-- Tab Content: JSON -->
+      <div class="doc-tab-content" id="tabContentJson">
+        <div class="json-viewer">
+          <div class="json-toolbar">
+            <span>Document JSON</span>
+            <button class="small-btn" id="copyJsonBtn"><i class="fa-solid fa-copy"></i> Copy</button>
+          </div>
+          <pre class="json-pre" id="jsonOutput">// No document generated yet</pre>
+        </div>
+      </div>
+
+    </div>
+  </aside>
+
+</div><!-- end .app-shell -->
+
+<!-- PDF Download Overlay -->
+<div class="pdf-overlay hidden" id="pdfOverlay">
+  <div class="pdf-overlay-card">
+    <div class="pdf-overlay-spinner">
+      <i class="fa-solid fa-file-pdf"></i>
+    </div>
+    <div class="pdf-overlay-title">Generating Enterprise PDF</div>
+    <div class="pdf-overlay-stages" id="pdfStages">
+      <div class="pdf-stage active" id="pdfS1"><i class="fa-solid fa-circle-notch fa-spin"></i> Building document structure</div>
+      <div class="pdf-stage" id="pdfS2"><i class="fa-regular fa-circle"></i> Applying enterprise template</div>
+      <div class="pdf-stage" id="pdfS3"><i class="fa-regular fa-circle"></i> Rendering PDF</div>
+    </div>
+    <button class="small-btn danger-btn" id="cancelPdfBtn">Cancel</button>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
