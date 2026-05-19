@@ -22,6 +22,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const conversationList = document.getElementById('conversationList');
   const themeToggleBtn = document.getElementById('themeToggleBtn');
   const themeIcon = document.getElementById('themeIcon');
+  const appShell = document.getElementById('appShell');
+  const resizerLeft = document.getElementById('resizerLeft');
+  const resizerRight = document.getElementById('resizerRight');
 
   // Doc Panel Workspace elements
   const docEmptyState = document.getElementById('docEmptyState');
@@ -257,6 +260,124 @@ graph TD
 </div>`
   };
 
+  // --- Split Pane Resizing Logic ---
+  const savedSidebarWidth = localStorage.getItem('sidebarWidth');
+  const savedDocPanelWidth = localStorage.getItem('docPanelWidth');
+
+  if (savedSidebarWidth) {
+    sidebar.style.width = savedSidebarWidth;
+    appShell.style.setProperty('--sidebar-width', savedSidebarWidth);
+  }
+  if (savedDocPanelWidth) {
+    docPanel.style.width = savedDocPanelWidth;
+    appShell.style.setProperty('--doc-panel-width', savedDocPanelWidth);
+  }
+
+  function updateResizerVisibility() {
+    if (sidebar.classList.contains('collapsed')) {
+      resizerLeft.classList.add('hidden');
+    } else {
+      resizerLeft.classList.remove('hidden');
+    }
+
+    if (docPanel.classList.contains('collapsed')) {
+      resizerRight.classList.add('hidden');
+    } else {
+      resizerRight.classList.remove('hidden');
+    }
+  }
+
+  let isDraggingLeft = false;
+  let isDraggingRight = false;
+
+  resizerLeft.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    isDraggingLeft = true;
+    appShell.classList.add('resizing');
+    resizerLeft.classList.add('dragging');
+  });
+
+  resizerRight.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    isDraggingRight = true;
+    appShell.classList.add('resizing');
+    resizerRight.classList.add('dragging');
+  });
+
+  resizerLeft.addEventListener('touchstart', (e) => {
+    isDraggingLeft = true;
+    appShell.classList.add('resizing');
+    resizerLeft.classList.add('dragging');
+  });
+
+  resizerRight.addEventListener('touchstart', (e) => {
+    isDraggingRight = true;
+    appShell.classList.add('resizing');
+    resizerRight.classList.add('dragging');
+  });
+
+  document.addEventListener('mousemove', handlePointerMove);
+  document.addEventListener('touchmove', (e) => {
+    if (e.touches && e.touches.length > 0) {
+      handlePointerMove(e.touches[0]);
+    }
+  });
+
+  function handlePointerMove(e) {
+    if (!isDraggingLeft && !isDraggingRight) return;
+
+    if (isDraggingLeft) {
+      let newWidth = e.clientX;
+      const minWidth = 200;
+      const maxWidth = 450;
+      if (newWidth < minWidth) newWidth = minWidth;
+      if (newWidth > maxWidth) newWidth = maxWidth;
+
+      const chatPanelMinWidth = 350;
+      const docPanelWidth = docPanel.classList.contains('collapsed') ? 0 : docPanel.getBoundingClientRect().width;
+      const maxAllowed = window.innerWidth - docPanelWidth - chatPanelMinWidth;
+      if (newWidth > maxAllowed) newWidth = maxAllowed;
+
+      sidebar.style.width = newWidth + 'px';
+      appShell.style.setProperty('--sidebar-width', newWidth + 'px');
+    }
+
+    if (isDraggingRight) {
+      let newWidth = window.innerWidth - e.clientX;
+      const minWidth = 350;
+      const maxWidth = window.innerWidth * 0.75;
+      if (newWidth < minWidth) newWidth = minWidth;
+      if (newWidth > maxWidth) newWidth = maxWidth;
+
+      const chatPanelMinWidth = 350;
+      const sidebarWidth = sidebar.classList.contains('collapsed') ? 0 : sidebar.getBoundingClientRect().width;
+      const maxAllowed = window.innerWidth - sidebarWidth - chatPanelMinWidth;
+      if (newWidth > maxAllowed) newWidth = maxAllowed;
+
+      docPanel.style.width = newWidth + 'px';
+      appShell.style.setProperty('--doc-panel-width', newWidth + 'px');
+    }
+  }
+
+  function stopDragging() {
+    if (isDraggingLeft) {
+      isDraggingLeft = false;
+      const currentWidth = sidebar.style.width;
+      localStorage.setItem('sidebarWidth', currentWidth);
+    }
+    if (isDraggingRight) {
+      isDraggingRight = false;
+      const currentWidth = docPanel.style.width;
+      localStorage.setItem('docPanelWidth', currentWidth);
+    }
+    appShell.classList.remove('resizing');
+    resizerLeft.classList.remove('dragging');
+    resizerRight.classList.remove('dragging');
+  }
+
+  document.addEventListener('mouseup', stopDragging);
+  document.addEventListener('touchend', stopDragging);
+
   // --- Initial Setup ---
   initTheme();
   setupEventListeners();
@@ -269,6 +390,7 @@ graph TD
     sidebar.classList.add('collapsed');
     sidebarExpandBtn.classList.remove('hidden');
   }
+  updateResizerVisibility();
 
   // --- Theme Controller ---
   function initTheme() {
@@ -300,16 +422,19 @@ graph TD
   sidebarCollapseBtn.addEventListener('click', () => {
     sidebar.classList.add('collapsed');
     sidebarExpandBtn.classList.remove('hidden');
+    updateResizerVisibility();
   });
 
   sidebarExpandBtn.addEventListener('click', () => {
     sidebar.classList.remove('collapsed');
     sidebarExpandBtn.classList.add('hidden');
+    updateResizerVisibility();
   });
 
   // --- Doc Panel Toggle ---
   toggleDocPanel.addEventListener('click', () => {
     docPanel.classList.toggle('collapsed');
+    updateResizerVisibility();
   });
 
   // --- Tabs Navigation ---

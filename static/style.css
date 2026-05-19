@@ -93,6 +93,46 @@ body {
   width: 100vw;
   height: 100vh;
   position: relative;
+  --sidebar-width: 280px;
+  --doc-panel-width: 45vw;
+}
+
+/* Disable transitions during layout drag-resizing */
+.app-shell.resizing .sidebar,
+.app-shell.resizing .doc-panel,
+.app-shell.resizing .chat-panel {
+  transition: none !important;
+}
+
+/* Premium Resizer dividers */
+.resizer {
+  width: 1px;
+  background-color: var(--border-color);
+  cursor: col-resize;
+  position: relative;
+  z-index: 20;
+  flex-shrink: 0;
+  transition: background-color 0.2s, width 0.2s, margin 0.2s;
+}
+
+/* Expand hover hit-box without layout shift */
+.resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  right: -5px;
+  cursor: col-resize;
+  z-index: 25;
+}
+
+.resizer:hover,
+.resizer.dragging {
+  width: 3px;
+  background-color: var(--brand-red);
+  margin-left: -1px;
+  margin-right: -1px;
 }
 
 .hidden {
@@ -103,10 +143,10 @@ body {
    LEFT SIDEBAR STYLE
    ══════════════════════════════════════════════════════════════ */
 .sidebar {
-  width: 280px;
+  width: var(--sidebar-width);
   background-color: var(--bg-sidebar);
   color: var(--text-sidebar);
-  border-right: 1px solid var(--border-color);
+  border-right: none;
   display: flex;
   flex-direction: column;
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -122,7 +162,7 @@ body {
 }
 
 .sidebar.collapsed {
-  width: 0;
+  width: 0 !important;
   padding: 0;
   overflow: hidden;
   border-right: none;
@@ -852,11 +892,11 @@ body {
    RIGHT PANEL STYLE (LIVE DOCUMENT WORKSPACE)
    ══════════════════════════════════════════════════════════════ */
 .doc-panel {
-  width: 45vw;
-  max-width: 850px;
-  min-width: 480px;
+  width: var(--doc-panel-width);
+  max-width: 75vw;
+  min-width: 350px;
   background-color: var(--bg-panel);
-  border-left: 1px solid var(--border-color);
+  border-left: none;
   display: flex;
   flex-direction: column;
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s ease, max-width 0.3s ease, transform 0.3s ease;
@@ -1705,12 +1745,15 @@ body {
    RESPONSIVE DESIGN ADAPTATIONS
    ══════════════════════════════════════════════════════════════ */
 @media (min-width: 1025px) and (max-width: 1366px) {
+  .app-shell {
+    --sidebar-width: 240px;
+  }
   .sidebar {
-    width: 240px;
+    width: var(--sidebar-width);
   }
   .doc-panel {
-    width: 45vw;
-    min-width: 380px;
+    width: var(--doc-panel-width);
+    min-width: 350px;
   }
   .doc-panel-inner {
     width: 100%;
