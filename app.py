@@ -7,6 +7,10 @@ import re
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_from_directory, url_for
 from dotenv import load_dotenv
+from werkzeug.utils import secure_filename
+import pdfplumber
+import docx
+import pandas as pd
 
 # ReportLab imports
 from reportlab.lib.pagesizes import A4
@@ -84,55 +88,51 @@ def generate_report_data(topic, requirements):
     if not openrouter_key:
         raise ValueError("OpenRouter API key is missing in .env")
     prompt = f"""
-    You are an expert engineering professor. Generate a comprehensive, professional engineering project report based on the following:
+    You are an elite enterprise architect, program manager, and lead SAP consultant by KaarTech. Generate a comprehensive, professional enterprise document (e.g. SAP Migration Proposal, BRD, Project Charter) based on the following:
     Topic: {topic}
-    Requirements: {requirements}
+    Requirements/Context: {requirements}
 
-    You MUST output the result in STRICT JSON format with NO markdown wrapping (no ```json ... ```, just the raw object).
+    CRITICAL TONE RULES:
+    1. Be concise, factual, structured, and business-focused.
+    2. DO NOT use AI-sounding marketing clichés. 
+    3. ABSOLUTELY BANNED PHRASES: "revolutionary", "industry leading", "proprietary framework", "guaranteed", "accelerate transformation journey", "next generation", "world class".
+    You MUST output the result in STRICT JSON format with NO markdown wrapping.
     
-    The JSON MUST have exactly this structure:
+    The JSON MUST have this structure:
     {{
-      "project_title": "Full project title here",
+      "title": "Full Document Title here",
+      "client": "Client Name or Enterprise",
+      "date": "YYYY-MM-DD",
       "sections": [
-        {{ "title": "1. Cover Page", "type": "cover", "author": "Student Name", "guide": "Professor Name", "institution": "University Name" }},
-        {{ "title": "2. Certificate Page", "type": "certificate" }},
-        {{ "title": "3. Abstract", "type": "standard", "content": "Abstract text here...", "subheadings": [] }},
-        {{ "title": "4. Introduction", "type": "standard", "subheadings": [ {{"title": "4.1 Background", "text": "...", "image_query": "iot microcontroller"}} ] }},
-        {{ "title": "5. Components Required", "type": "components_table", "components": [ {{"sno": "1", "name": "ESP32", "qty": "1", "desc": "Main controller", "image_query": "ESP32 board"}} ] }},
-        {{ "title": "6. Hardware Description", "type": "standard", "subheadings": [...] }},
-        {{ "title": "7. Software Description", "type": "standard", "subheadings": [...] }},
-        {{ "title": "8. Working Principle", "type": "standard", "subheadings": [...] }},
-        {{ "title": "9. Circuit Diagram", "type": "standard", "subheadings": [ {{"title": "9.1 Wiring details", "text": "...", "image_query": "breadboard circuit wiring"}} ] }},
-        {{ "title": "10. Flowchart", "type": "flowchart", "mermaid_code": "graph TD;\\nA[Start]-->B[Read Sensors];\\nB-->C{{Threshold met?}};\\nC-->|Yes|D[Turn on Relay];\\nC-->|No|B;\\nD-->E[End];" }},
-        {{ "title": "11. Results", "type": "standard", "subheadings": [...] }},
-        {{ "title": "12. Advantages", "type": "standard", "subheadings": [...] }},
-        {{ "title": "13. Applications", "type": "standard", "subheadings": [...] }},
-        {{ "title": "14. Future Scope", "type": "standard", "subheadings": [...] }},
-        {{ "title": "15. Conclusion", "type": "standard", "subheadings": [...] }},
-        {{ "title": "16. References", "type": "standard", "subheadings": [ {{"title": "Links", "text": "1. link... 2. link...", "image_query": ""}} ] }},
-        {{ "title": "17. Final Connection Guide", "type": "standard", "subheadings": [ {{"title": "Pin Mapping", "text": "...", "image_query": ""}} ] }}
+        {{ "id": "section-id-1", "title": "1. Section Title 1", "content": "HTML content here..." }},
+        {{ "id": "section-id-2", "title": "2. Section Title 2", "content": "HTML content here..." }}
       ]
     }}
+
+    CRITICAL STRUCTURE RULES:
+    1. Generate between 4 to 12 logical sections tailored specifically to the document type/topic.
+    2. Define relevant sections that cover all aspects of the requested topic (e.g. if the topic is a cutover plan, include phases, tasks, checklist, rollback path. If it's a security role matrix, include roles, permissions, GRC mapping. If it's an enterprise overview like "kaartech overview", include company vision, offerings, SAP expertise).
     
-    IMPORTANT RULES:
-    1. Be highly technical, use engineering terminology, real formulas, and accurate descriptions.
-    2. Every standard section MUST have at least 1 subheading with detailed 'text' and an optional 'image_query' (short 2-3 words for Pexels).
-    3. Ensure the JSON is valid and escaped correctly.
-    4. Keep text concise but professional to ensure it fits in the response window.
+    IMPORTANT CONTENT RULES:
+    1. The 'content' field MUST contain well-formatted, rich HTML (<p>, <ul>, <li>, <strong>, <table class="doc-table">).
+    2. NEVER generate the timeline as paragraphs. It MUST be an HTML table with Phase | Duration | Activities | Owner | Dependency.
+    3. NEVER generate risks as paragraphs. It MUST be an HTML table with Risk | Impact | Severity | Mitigation. Use <span class="badge high">High</span>, <span class="badge medium">Medium</span>, <span class="badge low">Low</span> for the Severity column.
+    4. For any architecture, processes, or diagrams, DO NOT use simple bullet points or placeholders. You MUST generate a valid, standard Mermaid flowchart inside a `<div class="mermaid">` tag, using standard layout syntax (e.g., `graph TD` or `graph LR` with styled nodes).
+    5. Ensure the JSON is valid and escaped correctly.
     """
 
     headers = {
         "Authorization": f"Bearer {openrouter_key}",
         "Content-Type": "application/json",
         "HTTP-Referer": "http://localhost:5000",
-        "X-Title": "AI Engineering Report Generator"
+        "X-Title": "KTern Enterprise AI Document Generator"
     }
     
     payload = {
         "model": AI_MODEL,
         "max_tokens": 6000,
         "messages": [
-            {"role": "system", "content": "You are a JSON-generating bot for engineering reports. Output ONLY valid JSON."},
+            {"role": "system", "content": "You are a JSON-generating enterprise SAP consulting assistant. Output ONLY valid JSON."},
             {"role": "user", "content": prompt}
         ],
         "temperature": 0.3
@@ -179,141 +179,293 @@ def generate_report_data(topic, requirements):
         raise ValueError("AI response was not valid JSON.")
 
 
-class ReportFooterTemplate(PageTemplate):
-    def __init__(self, id, project_title):
-        self.project_title = project_title
-        frames = [Frame(inch, inch, A4[0] - 2*inch, A4[1] - 2*inch, id='normal')]
-        super().__init__(id, frames=frames)
-
-    def beforeDrawPage(self, canvas, doc):
-        canvas.saveState()
-        canvas.setFont('Helvetica', 9)
-        canvas.setStrokeColor(colors.grey)
-        
-        # Header border
-        canvas.line(inch, A4[1] - 0.7*inch, A4[0] - inch, A4[1] - 0.7*inch)
-        
-        # Footer border
-        canvas.line(inch, 0.7*inch, A4[0] - inch, 0.7*inch)
-        
-        # Footer text
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        canvas.drawString(inch, 0.5*inch, f"Project: {self.project_title[:50]}...")
-        canvas.drawRightString(A4[0] - inch, 0.5*inch, f"Date: {date_str} | Page {doc.page}")
-        
-        canvas.restoreState()
 
 
-def build_pdf(report_data, filepath):
-    doc = BaseDocTemplate(filepath, pagesize=A4, rightMargin=inch, leftMargin=inch, topMargin=inch, bottomMargin=inch)
-    doc.addPageTemplates([ReportFooterTemplate('Normal', report_data.get('project_title', 'Engineering Report'))])
+
+def clean_html_for_reportlab(html_text):
+    if not html_text:
+        return ""
     
-    styles = getSampleStyleSheet()
+    # Normalize common problematic unicode characters for ReportLab
+    html_text = html_text.replace('\u2011', '-')
+    html_text = html_text.replace('\u2013', '-')
+    html_text = html_text.replace('\u2014', '--')
+    html_text = html_text.replace('\u201c', '"').replace('\u201d', '"')
+    html_text = html_text.replace('\u2018', "'").replace('\u2019', "'")
     
-    # Custom Styles
-    styles.add(ParagraphStyle(name='CoverTitle', parent=styles['Heading1'], fontSize=28, spaceAfter=30, alignment=1, textColor=colors.HexColor('#1e293b')))
-    styles.add(ParagraphStyle(name='CoverSub', parent=styles['Normal'], fontSize=16, spaceAfter=20, alignment=1))
-    styles.add(ParagraphStyle(name='MainHeading', parent=styles['Heading1'], fontSize=18, spaceBefore=20, spaceAfter=10, textColor=colors.HexColor('#0f172a')))
-    styles.add(ParagraphStyle(name='SubHeading', parent=styles['Heading2'], fontSize=14, spaceBefore=15, spaceAfter=10, textColor=colors.HexColor('#334155')))
-    styles.add(ParagraphStyle(name='BodyTextCustom', parent=styles['BodyText'], fontSize=11, leading=16, spaceAfter=12, alignment=4)) # Justified
-    styles.add(ParagraphStyle(name='TableText', parent=styles['Normal'], fontSize=10, leading=14, alignment=0)) # Left aligned for tables
+    # Convert strong/em to b/i
+    html_text = html_text.replace('<strong>', '<b>').replace('</strong>', '</b>')
+    html_text = html_text.replace('<em>', '<i>').replace('</em>', '</i>')
     
-    story = []
-    
-    for section in report_data.get('sections', []):
-        stype = section.get('type', 'standard')
+    # Convert headings to bold + break
+    for i in range(1, 7):
+        html_text = html_text.replace(f'<h{i}>', '<b>').replace(f'</h{i}>', '</b><br/>')
         
-        if stype == 'cover':
-            story.append(Spacer(1, 2*inch))
-            story.append(Paragraph("ENGINEERING PROJECT REPORT", styles['CoverTitle']))
-            story.append(Spacer(1, 1*inch))
-            story.append(Paragraph(report_data.get('project_title', 'Project Title').upper(), styles['CoverTitle']))
-            story.append(Spacer(1, 2*inch))
-            story.append(Paragraph(f"Submitted By: {section.get('author', 'Student')}", styles['CoverSub']))
-            story.append(Paragraph(f"Guided By: {section.get('guide', 'Professor')}", styles['CoverSub']))
-            story.append(Paragraph(f"{section.get('institution', 'University')}", styles['CoverSub']))
-            story.append(PageBreak())
+    html_text = html_text.replace('<br>', '<br/>')
+    
+    # Strip block elements and any other tags ReportLab Paragraph doesn't support
+    def tag_replacer(match):
+        full_tag = match.group(0)
+        tag_name = match.group(1).lower()
+        if tag_name in ['b', 'i', 'u', 'font', 'a']:
+            return full_tag
+        elif tag_name in ['br']:
+            return '<br/>'
+        return '' # strip other tags
+        
+    html_text = re.sub(r'</?([a-zA-Z0-9]+)(?:\s+[^>]*)?>', tag_replacer, html_text)
+    
+    # Escape ampersands but avoid double-escaping entities
+    html_text = re.sub(r'&(?!amp;|lt;|gt;|quot;|apos;|nbsp;)', '&amp;', html_text)
+    
+    # Balance remaining inline tags (b, i, u, font, a)
+    for tag in ['b', 'i', 'u', 'font', 'a']:
+        open_count = len(re.findall(f'<{tag}(?:\\s+[^>]*)?>', html_text, re.IGNORECASE))
+        close_count = len(re.findall(f'</{tag}>', html_text, re.IGNORECASE))
+        
+        if open_count > close_count:
+            html_text += f'</{tag}>' * (open_count - close_count)
+        elif close_count > open_count:
+            html_text = f'<{tag}>' * (close_count - open_count) + html_text
             
-        elif stype == 'certificate':
-            story.append(Paragraph(section.get('title', 'Certificate'), styles['MainHeading']))
-            story.append(Spacer(1, 1*inch))
-            cert_text = f"This is to certify that the project entitled '{report_data.get('project_title', '')}' is a bonafide record of work carried out successfully for the engineering curriculum."
-            story.append(Paragraph(cert_text, styles['BodyTextCustom']))
-            story.append(Spacer(1, 3*inch))
-            story.append(Paragraph("Signature of Guide                                      Signature of HOD", styles['BodyTextCustom']))
-            story.append(PageBreak())
-            
-        elif stype == 'components_table':
-            story.append(Paragraph(section.get('title', 'Components Required'), styles['MainHeading']))
-            
-            table_data = [['S.No', 'Component', 'Qty', 'Description', 'Image']]
-            for comp in section.get('components', []):
-                img_path = fetch_pexels_image(comp.get('image_query', 'electronic component')) if comp.get('image_query') else None
-                img_flowable = Image(img_path, width=1.5*inch, height=1*inch) if img_path else ""
-                
-                table_data.append([
-                    comp.get('sno', ''),
-                    comp.get('name', ''),
-                    comp.get('qty', ''),
-                    Paragraph(comp.get('desc', ''), styles['TableText']),
-                    img_flowable
-                ])
-                
-            t = Table(table_data, colWidths=[0.5*inch, 1.5*inch, 0.5*inch, 2*inch, 1.7*inch])
-            t.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#3b82f6')),
-                ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                ('ALIGN', (3,1), (3,-1), 'LEFT'),
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-                ('BOTTOMPADDING', (0,0), (-1,0), 12),
-                ('GRID', (0,0), (-1,-1), 1, colors.black),
-                ('WORDWRAP', (0,0), (-1,-1), True)
-            ]))
-            story.append(t)
-            story.append(PageBreak())
-            
-        elif stype == 'flowchart':
-            story.append(Paragraph(section.get('title', 'Flowchart'), styles['MainHeading']))
-            mermaid = section.get('mermaid_code', '')
-            if mermaid:
-                img_path = fetch_mermaid_flowchart(mermaid)
+    # Remove excess breaks
+    html_text = re.sub(r'(<br/>\s*){3,}', '<br/><br/>', html_text)
+    html_text = html_text.strip()
+    html_text = re.sub(r'^(<br/>\s*)+', '', html_text)
+    html_text = re.sub(r'(\s*<br/>)+$', '', html_text)
+    html_text = html_text.strip()
+    
+    return html_text
+
+
+def parse_html_to_story(html_content, styles, story, brand_navy, brand_red, border_grey, A4):
+    content = (html_content or '').strip()
+    if not content:
+        return
+
+    # Regex to extract structured block elements sequentially
+    pattern = re.compile(
+        r'(<table.*?>.*?</table>|'
+        r'<div class=["\']timeline-list["\'].*?>.*?</div>|'
+        r'<div class=["\']mermaid["\'].*?>.*?</div>|'
+        r'<ul.*?>.*?</ul>|'
+        r'<ol.*?>.*?</ol>|'
+        r'<p.*?>.*?</p>|'
+        r'<div class=["\']risk-item["\'].*?>.*?</div>|'
+        r'<div class=["\']diagram-container["\'].*?>.*?</div>)',
+        re.DOTALL | re.IGNORECASE
+    )
+
+    matches = list(pattern.finditer(content))
+
+    if not matches:
+        story.append(Paragraph(clean_html_for_reportlab(content), styles['CorpBody']))
+        story.append(Spacer(1, 6))
+        return
+
+    last_end = 0
+    for match in matches:
+        between_text = content[last_end:match.start()].strip()
+        if between_text:
+            clean_text = clean_html_for_reportlab(between_text)
+            if clean_text:
+                story.append(Paragraph(clean_text, styles['CorpBody']))
+                story.append(Spacer(1, 6))
+
+        block_html = match.group(1)
+        last_end = match.end()
+
+        # Handle specific blocks
+        if block_html.lower().startswith('<table'):
+            try:
+                headers = re.findall(r'<th.*?>(.*?)</th>', block_html, re.DOTALL | re.IGNORECASE)
+                rows_html = re.findall(r'<tr.*?>(.*?)</tr>', block_html, re.DOTALL | re.IGNORECASE)
+
+                table_data = []
+                if headers:
+                    table_data.append([Paragraph(clean_html_for_reportlab(h), styles['CorpTableHeader']) for h in headers])
+
+                for r_html in rows_html:
+                    if '<th' in r_html.lower() and not '<td' in r_html.lower():
+                        continue
+                    cols = re.findall(r'<td.*?>(.*?)</td>', r_html, re.DOTALL | re.IGNORECASE)
+                    if cols:
+                        table_data.append([Paragraph(clean_html_for_reportlab(c), styles['CorpTableText']) for c in cols])
+
+                if table_data:
+                    num_cols = len(table_data[0])
+                    col_width = (A4[0] - 2 * inch) / num_cols
+                    t = Table(table_data, colWidths=[col_width] * num_cols)
+                    t_style = [
+                        ('BACKGROUND', (0, 0), (-1, 0), brand_navy),
+                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+                        ('TOPPADDING', (0, 0), (-1, 0), 6),
+                        ('GRID', (0, 0), (-1, -1), 0.5, border_grey),
+                    ]
+                    for r_idx in range(1, len(table_data)):
+                        if r_idx % 2 == 0:
+                            t_style.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor('#f9fafb')))
+                    t.setStyle(TableStyle(t_style))
+                    story.append(t)
+                    story.append(Spacer(1, 8))
+            except Exception as e:
+                print(f"PDF Table Parse Error: {e}")
+                story.append(Paragraph(clean_html_for_reportlab(block_html), styles['CorpBody']))
+                story.append(Spacer(1, 6))
+
+        elif 'timeline-list' in block_html.lower():
+            try:
+                phases = re.findall(r"<div class=['\"]timeline-phase['\"]>(.*?)</div>", block_html, re.DOTALL | re.IGNORECASE)
+                durations = re.findall(r"<div class=['\"]timeline-duration['\"]>(.*?)</div>", block_html, re.DOTALL | re.IGNORECASE)
+                descs = re.findall(r"<div class=['\"]timeline-desc['\"]>(.*?)</div>", block_html, re.DOTALL | re.IGNORECASE)
+
+                timeline_table_data = [[
+                    Paragraph("<b>Migration Phase</b>", styles['CorpTableHeader']),
+                    Paragraph("<b>Duration</b>", styles['CorpTableHeader']),
+                    Paragraph("<b>Details & Objectives</b>", styles['CorpTableHeader'])
+                ]]
+
+                for idx in range(min(len(phases), len(durations), len(descs))):
+                    timeline_table_data.append([
+                        Paragraph(clean_html_for_reportlab(phases[idx]), styles['CorpTableText']),
+                        Paragraph(f"<font color='#c8102e'><b>{clean_html_for_reportlab(durations[idx])}</b></font>", styles['CorpTableText']),
+                        Paragraph(clean_html_for_reportlab(descs[idx]), styles['CorpTableText'])
+                    ])
+
+                t = Table(timeline_table_data, colWidths=[1.8 * inch, 1.2 * inch, 3.5 * inch])
+                t_style = [
+                    ('BACKGROUND', (0, 0), (-1, 0), brand_navy),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+                    ('TOPPADDING', (0, 0), (-1, 0), 6),
+                    ('GRID', (0, 0), (-1, -1), 0.5, border_grey),
+                ]
+                for r_idx in range(1, len(timeline_table_data)):
+                    if r_idx % 2 == 0:
+                        t_style.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor('#f9fafb')))
+                t.setStyle(TableStyle(t_style))
+                story.append(t)
+                story.append(Spacer(1, 8))
+            except Exception as e:
+                print(f"PDF Timeline Parse Error: {e}")
+                story.append(Paragraph(clean_html_for_reportlab(block_html), styles['CorpBody']))
+                story.append(Spacer(1, 6))
+
+        elif 'mermaid' in block_html.lower() or 'diagram-container' in block_html.lower():
+            try:
+                # Extract code inside mermaid div or fallback to diagram-container code
+                mermaid_code = re.search(r'<div class=["\']mermaid["\']>(.*?)</div>', block_html, re.DOTALL | re.IGNORECASE)
+                code = ""
+                if mermaid_code:
+                    code = mermaid_code.group(1).strip()
+                else:
+                    code = """graph TD
+    classDef client fill:#f8fafc,stroke:#475569,stroke-width:1.5px
+    classDef web fill:#eff6ff,stroke:#2563eb,stroke-width:1.5px
+    classDef app fill:#fef3c7,stroke:#d97706,stroke-width:2px
+    classDef db fill:#fff1f2,stroke:#e11d48,stroke-width:1.5px
+
+    Client["Client / Mobile UX<br/>SAP Fiori Launchpad"]:::client
+    Gateway["SAP Gateway Server<br/>OData / HTTPS"]:::web
+    AppServer["SAP S/4HANA Core<br/>ABAP Application Server"]:::app
+    DBServer["SAP HANA DB Layer<br/>In-Memory Database"]:::db
+
+    Client -->|HTTPS Port 443| Gateway
+    Gateway -->|RFC Connection| AppServer
+    AppServer -->|SQL In-Memory Access| DBServer"""
+
+                # Clean entities
+                code = code.replace("&gt;", ">").replace("&lt;", "<").replace("&amp;", "&")
+
+                # Guarantee double quotes around labels containing slashes or spaces
+                lines = code.split('\n')
+                fixed_lines = []
+                for line in lines:
+                    m = re.match(r'^(\s*)(\w+)(\[[^"\].]+\]|\([^"\).]+\)|\{[^"\}.]+\})(.*)$', line)
+                    if m:
+                        indent, node_id, text_bracket, rest = m.groups()
+                        bracket_open = text_bracket[0]
+                        bracket_close = text_bracket[-1]
+                        text_inside = text_bracket[1:-1]
+                        if not text_inside.startswith('"'):
+                            line = f'{indent}{node_id}{bracket_open}"{text_inside}"{bracket_close}{rest}'
+                    fixed_lines.append(line)
+                code = '\n'.join(fixed_lines)
+
+                img_path = fetch_mermaid_flowchart(code)
                 if img_path:
-                    # scale down if too large
                     img = Image(img_path)
-                    img.drawHeight = 4*inch
-                    img.drawWidth = 5*inch
+                    img.drawHeight = 3.5 * inch
+                    img.drawWidth = 5.0 * inch
                     img.hAlign = 'CENTER'
                     story.append(img)
+                    story.append(Spacer(1, 10))
                 else:
-                    story.append(Paragraph("Flowchart generation failed.", styles['BodyTextCustom']))
-            story.append(PageBreak())
-            
-        else: # standard
-            story.append(Paragraph(section.get('title', 'Section'), styles['MainHeading']))
-            
-            if section.get('content'):
-                story.append(Paragraph(section.get('content', ''), styles['BodyTextCustom']))
-                
-            for i, sub in enumerate(section.get('subheadings', [])):
-                story.append(Paragraph(sub.get('title', ''), styles['SubHeading']))
-                story.append(Paragraph(sub.get('text', ''), styles['BodyTextCustom']))
-                
-                # Fetch and add image if queried (limit images to avoid massive PDFs, maybe 1 per section)
-                if sub.get('image_query') and i == 0: 
-                    img_path = fetch_pexels_image(sub.get('image_query'))
-                    if img_path:
-                        img = Image(img_path, width=4*inch, height=2.5*inch)
-                        img.hAlign = 'CENTER'
-                        story.append(Spacer(1, 10))
-                        story.append(img)
-                        story.append(Paragraph(f"Figure: {sub.get('title', 'Component')}", ParagraphStyle(name='caption', parent=styles['Normal'], alignment=1, fontSize=9, textColor=colors.grey)))
-                        story.append(Spacer(1, 10))
-                        
-            story.append(PageBreak())
-            
-    doc.build(story)
+                    story.append(Paragraph("Architecture Diagram Generation Failed.", styles['CorpBody']))
+            except Exception as e:
+                print(f"PDF Diagram Generation Error: {e}")
+                story.append(Paragraph("Architecture Diagram Failed.", styles['CorpBody']))
+
+        elif block_html.lower().startswith('<ul') or block_html.lower().startswith('<ol'):
+            try:
+                bullets = re.findall(r'<li.*?>(.*?)</li>', block_html, re.DOTALL | re.IGNORECASE)
+                for b in bullets:
+                    story.append(Paragraph(f"&bull; {clean_html_for_reportlab(b)}", styles['CorpBullet']))
+                story.append(Spacer(1, 4))
+            except Exception as e:
+                story.append(Paragraph(clean_html_for_reportlab(block_html), styles['CorpBody']))
+                story.append(Spacer(1, 6))
+
+        elif 'risk-item' in block_html.lower():
+            try:
+                titles = re.findall(r"<div class=['\"]risk-title['\"]>(.*?)</div>", block_html, re.DOTALL | re.IGNORECASE)
+                descs = re.findall(r"<div class=['\"]risk-desc['\"]>(.*?)</div>", block_html, re.DOTALL | re.IGNORECASE)
+                impacts = re.findall(r"<div class=['\"]risk-impact['\"]>(.*?)</div>", block_html, re.DOTALL | re.IGNORECASE)
+                mitigations = re.findall(r"<strong>Mitigation:</strong> (.*?)</p>", block_html, re.DOTALL | re.IGNORECASE)
+
+                for idx in range(min(len(titles), len(descs), len(impacts))):
+                    mit_text = mitigations[idx] if idx < len(mitigations) else "Standard testing procedures."
+
+                    risk_box_data = [
+                        [Paragraph(f"<b>RISK: {clean_html_for_reportlab(titles[idx])}</b>", styles['CorpBody']),
+                         Paragraph(f"<font color='#c8102e'><b>IMPACT: {clean_html_for_reportlab(impacts[idx]).upper()}</b></font>", styles['CorpTableText'])],
+                        [Paragraph(f"<i>Description:</i> {clean_html_for_reportlab(descs[idx])}", styles['CorpTableText']), ""],
+                        [Paragraph(f"<b>Mitigation:</b> {clean_html_for_reportlab(mit_text)}", styles['CorpTableText']), ""]
+                    ]
+
+                    t = Table(risk_box_data, colWidths=[5 * inch, 1.5 * inch])
+                    t.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#fcf8f8')),
+                        ('LINELEFT', (0, 0), (0, -1), 3, brand_red),
+                        ('BOX', (0, 0), (-1, -1), 0.5, border_grey),
+                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                        ('SPAN', (0, 1), (1, 1)),
+                        ('SPAN', (0, 2), (1, 2)),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                        ('TOPPADDING', (0, 0), (-1, -1), 4),
+                    ]))
+                    story.append(t)
+                    story.append(Spacer(1, 8))
+            except Exception as e:
+                story.append(Paragraph(clean_html_for_reportlab(block_html), styles['CorpBody']))
+                story.append(Spacer(1, 6))
+
+        else:
+            clean_text = clean_html_for_reportlab(block_html)
+            if clean_text:
+                story.append(Paragraph(clean_text, styles['CorpBody']))
+                story.append(Spacer(1, 6))
+
+    remaining_text = content[last_end:].strip()
+    if remaining_text:
+        clean_text = clean_html_for_reportlab(remaining_text)
+        if clean_text:
+            story.append(Paragraph(clean_text, styles['CorpBody']))
+            story.append(Spacer(1, 6))
 
 
 def build_enterprise_pdf(workspace_data, filepath):
@@ -390,260 +542,16 @@ def build_enterprise_pdf(workspace_data, filepath):
 
     # 2. Add sections from workspace data
     for sec in workspace_data.get('sections', []):
-        story.append(Paragraph(sec.get('title', 'Section'), styles['CorpHeading']))
+        story.append(Paragraph(clean_html_for_reportlab(sec.get('title', 'Section')), styles['CorpHeading']))
         content = sec.get('content', '')
         
-        # Check if content contains custom HTML elements and parse them
-        if "doc-table" in content:
-            try:
-                headers = re.findall(r'<th>(.*?)</th>', content)
-                rows_html = re.findall(r'<tr>(.*?)</tr>', content, re.DOTALL)
-                
-                table_data = []
-                if headers:
-                    table_data.append([Paragraph(h, styles['CorpTableHeader']) for h in headers])
-                
-                for r_html in rows_html:
-                    cols = re.findall(r'<td>(.*?)</td>', r_html)
-                    if cols:
-                        table_data.append([Paragraph(c, styles['CorpTableText']) for c in cols])
-                
-                if table_data:
-                    col_width = (A4[0] - 2*inch) / len(table_data[0])
-                    t = Table(table_data, colWidths=[col_width]*len(table_data[0]))
-                    t_style = [
-                        ('BACKGROUND', (0,0), (-1,0), brand_navy),
-                        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-                        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                        ('BOTTOMPADDING', (0,0), (-1,0), 6),
-                        ('TOPPADDING', (0,0), (-1,0), 6),
-                        ('GRID', (0,0), (-1,-1), 0.5, border_grey),
-                    ]
-                    for r_idx in range(1, len(table_data)):
-                        if r_idx % 2 == 0:
-                            t_style.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor('#f9fafb')))
-                    t.setStyle(TableStyle(t_style))
-                    story.append(t)
-                    story.append(Spacer(1, 8))
-            except Exception as e:
-                story.append(Paragraph(content, styles['CorpBody']))
-                
-        elif "timeline-list" in content:
-            try:
-                phases = re.findall(r"<div class='timeline-phase'>(.*?)</div>", content)
-                durations = re.findall(r"<div class='timeline-duration'>(.*?)</div>", content)
-                descs = re.findall(r"<div class='timeline-desc'>(.*?)</div>", content)
-                
-                timeline_table_data = [[
-                    Paragraph("<b>Migration Phase</b>", styles['CorpTableHeader']),
-                    Paragraph("<b>Duration</b>", styles['CorpTableHeader']),
-                    Paragraph("<b>Details & Objectives</b>", styles['CorpTableHeader'])
-                ]]
-                
-                for idx in range(min(len(phases), len(durations), len(descs))):
-                    timeline_table_data.append([
-                        Paragraph(phases[idx], styles['CorpTableText']),
-                        Paragraph(f"<font color='#c8102e'><b>{durations[idx]}</b></font>", styles['CorpTableText']),
-                        Paragraph(descs[idx], styles['CorpTableText'])
-                    ])
-                
-                t = Table(timeline_table_data, colWidths=[1.8*inch, 1.2*inch, 3.5*inch])
-                t_style = [
-                    ('BACKGROUND', (0,0), (-1,0), brand_navy),
-                    ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-                    ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                    ('BOTTOMPADDING', (0,0), (-1,0), 6),
-                    ('TOPPADDING', (0,0), (-1,0), 6),
-                    ('GRID', (0,0), (-1,-1), 0.5, border_grey),
-                ]
-                for r_idx in range(1, len(timeline_table_data)):
-                    if r_idx % 2 == 0:
-                        t_style.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor('#f9fafb')))
-                t.setStyle(TableStyle(t_style))
-                story.append(t)
-                story.append(Spacer(1, 8))
-            except Exception as e:
-                story.append(Paragraph(content, styles['CorpBody']))
-                
-        elif "risk-item" in content:
-            try:
-                titles = re.findall(r"<div class='risk-title'>(.*?)</div>", content)
-                descs = re.findall(r"<div class='risk-desc'>(.*?)</div>", content)
-                impacts = re.findall(r"<div class='risk-impact'>(.*?)</div>", content)
-                mitigations = re.findall(r"<strong>Mitigation:</strong> (.*?)</p>", content)
-                
-                for idx in range(min(len(titles), len(descs), len(impacts))):
-                    mit_text = mitigations[idx] if idx < len(mitigations) else "Standard testing procedures."
-                    
-                    risk_box_data = [
-                        [Paragraph(f"<b>RISK: {titles[idx]}</b>", styles['CorpBody']), 
-                         Paragraph(f"<font color='#c8102e'><b>IMPACT: {impacts[idx].upper()}</b></font>", styles['CorpTableText'])],
-                        [Paragraph(f"<i>Description:</i> {descs[idx]}", styles['CorpTableText']), ""],
-                        [Paragraph(f"<b>Mitigation:</b> {mit_text}", styles['CorpTableText']), ""]
-                    ]
-                    
-                    t = Table(risk_box_data, colWidths=[5*inch, 1.5*inch])
-                    t.setStyle(TableStyle([
-                        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#fcf8f8')),
-                        ('LINELEFT', (0,0), (0,-1), 3, brand_red),
-                        ('BOX', (0,0), (-1,-1), 0.5, border_grey),
-                        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-                        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                        ('SPAN', (0,1), (1,1)),
-                        ('SPAN', (0,2), (1,2)),
-                        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-                        ('TOPPADDING', (0,0), (-1,-1), 4),
-                    ]))
-                    story.append(t)
-                    story.append(Spacer(1, 8))
-            except Exception as e:
-                story.append(Paragraph(content, styles['CorpBody']))
-                
-        elif "diagram-container" in content:
-            diagram_table_data = [
-                [Paragraph("<b>[ MODERNIZED S/4HANA TARGET CLOUD ARCHITECTURE ]</b>", styles['CorpTableHeader'])],
-                [Paragraph("<b>Orchestrated Layer:</b> SAP Fiori Gateway Gateway Server", styles['CorpTableText'])],
-                [Paragraph("<b>Core Layer:</b> SAP S/4HANA Enterprise Core (Clean Core Mode)", styles['CorpTableText'])],
-                [Paragraph("<b>Database Layer:</b> SAP HANA Memory-Optimized In-Memory Layer", styles['CorpTableText'])],
-                [Paragraph("<b>Hosting Layer:</b> Enterprise Secure Cloud Landing Zone (AWS/Azure)", styles['CorpTableText'])]
-            ]
-            t = Table(diagram_table_data, colWidths=[6.5*inch])
-            t.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), brand_navy),
-                ('BACKGROUND', (0,1), (-1,-1), colors.HexColor('#f4f6f9')),
-                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('GRID', (0,0), (-1,-1), 1, border_grey),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-                ('TOPPADDING', (0,0), (-1,-1), 6),
-            ]))
-            story.append(t)
-            story.append(Spacer(1, 10))
-            
-        else:
-            if "<ul>" in content or "<li>" in content:
-                bullets = re.findall(r'<li>(.*?)</li>', content)
-                for b in bullets:
-                    story.append(Paragraph(f"&bull; {b}", styles['CorpBullet']))
-            else:
-                clean_txt = content.replace("<p>", "").replace("</p>", "<br/><br/>")
-                story.append(Paragraph(clean_txt, styles['CorpBody']))
-                
+        parse_html_to_story(content, styles, story, brand_navy, brand_red, border_grey, A4)
         story.append(Spacer(1, 10))
         
     doc.build(story)
 
 
-def build_pdf(report_data, filepath):
-    doc = BaseDocTemplate(filepath, pagesize=A4, rightMargin=inch, leftMargin=inch, topMargin=inch, bottomMargin=inch)
-    doc.addPageTemplates([ReportFooterTemplate('Normal', report_data.get('project_title', 'Engineering Report'))])
-    
-    styles = getSampleStyleSheet()
-    
-    # Custom Styles
-    styles.add(ParagraphStyle(name='CoverTitle', parent=styles['Heading1'], fontSize=28, spaceAfter=30, alignment=1, textColor=colors.HexColor('#1e293b')))
-    styles.add(ParagraphStyle(name='CoverSub', parent=styles['Normal'], fontSize=16, spaceAfter=20, alignment=1))
-    styles.add(ParagraphStyle(name='MainHeading', parent=styles['Heading1'], fontSize=18, spaceBefore=20, spaceAfter=10, textColor=colors.HexColor('#0f172a')))
-    styles.add(ParagraphStyle(name='SubHeading', parent=styles['Heading2'], fontSize=14, spaceBefore=15, spaceAfter=10, textColor=colors.HexColor('#334155')))
-    styles.add(ParagraphStyle(name='BodyTextCustom', parent=styles['BodyText'], fontSize=11, leading=16, spaceAfter=12, alignment=4)) # Justified
-    styles.add(ParagraphStyle(name='TableText', parent=styles['Normal'], fontSize=10, leading=14, alignment=0)) # Left aligned for tables
-    
-    story = []
-    
-    for section in report_data.get('sections', []):
-        stype = section.get('type', 'standard')
-        
-        if stype == 'cover':
-            story.append(Spacer(1, 2*inch))
-            story.append(Paragraph("ENGINEERING PROJECT REPORT", styles['CoverTitle']))
-            story.append(Spacer(1, 1*inch))
-            story.append(Paragraph(report_data.get('project_title', 'Project Title').upper(), styles['CoverTitle']))
-            story.append(Spacer(1, 2*inch))
-            story.append(Paragraph(f"Submitted By: {section.get('author', 'Student')}", styles['CoverSub']))
-            story.append(Paragraph(f"Guided By: {section.get('guide', 'Professor')}", styles['CoverSub']))
-            story.append(Paragraph(f"{section.get('institution', 'University')}", styles['CoverSub']))
-            story.append(PageBreak())
-            
-        elif stype == 'certificate':
-            story.append(Paragraph(section.get('title', 'Certificate'), styles['MainHeading']))
-            story.append(Spacer(1, 1*inch))
-            cert_text = f"This is to certify that the project entitled '{report_data.get('project_title', '')}' is a bonafide record of work carried out successfully for the engineering curriculum."
-            story.append(Paragraph(cert_text, styles['BodyTextCustom']))
-            story.append(Spacer(1, 3*inch))
-            story.append(Paragraph("Signature of Guide                                      Signature of HOD", styles['BodyTextCustom']))
-            story.append(PageBreak())
-            
-        elif stype == 'components_table':
-            story.append(Paragraph(section.get('title', 'Components Required'), styles['MainHeading']))
-            
-            table_data = [['S.No', 'Component', 'Qty', 'Description', 'Image']]
-            for comp in section.get('components', []):
-                img_path = fetch_pexels_image(comp.get('image_query', 'electronic component')) if comp.get('image_query') else None
-                img_flowable = Image(img_path, width=1.5*inch, height=1*inch) if img_path else ""
-                
-                table_data.append([
-                    comp.get('sno', ''),
-                    comp.get('name', ''),
-                    comp.get('qty', ''),
-                    Paragraph(comp.get('desc', ''), styles['TableText']),
-                    img_flowable
-                ])
-                
-            t = Table(table_data, colWidths=[0.5*inch, 1.5*inch, 0.5*inch, 2*inch, 1.7*inch])
-            t.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#3b82f6')),
-                ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                ('ALIGN', (3,1), (3,-1), 'LEFT'),
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-                ('BOTTOMPADDING', (0,0), (-1,0), 12),
-                ('GRID', (0,0), (-1,-1), 1, colors.black),
-                ('WORDWRAP', (0,0), (-1,-1), True)
-            ]))
-            story.append(t)
-            story.append(PageBreak())
-            
-        elif stype == 'flowchart':
-            story.append(Paragraph(section.get('title', 'Flowchart'), styles['MainHeading']))
-            mermaid = section.get('mermaid_code', '')
-            if mermaid:
-                img_path = fetch_mermaid_flowchart(mermaid)
-                if img_path:
-                    # scale down if too large
-                    img = Image(img_path)
-                    img.drawHeight = 4*inch
-                    img.drawWidth = 5*inch
-                    img.hAlign = 'CENTER'
-                    story.append(img)
-                else:
-                    story.append(Paragraph("Flowchart generation failed.", styles['BodyTextCustom']))
-            story.append(PageBreak())
-            
-        else: # standard
-            story.append(Paragraph(section.get('title', 'Section'), styles['MainHeading']))
-            
-            if section.get('content'):
-                story.append(Paragraph(section.get('content', ''), styles['BodyTextCustom']))
-                
-            for i, sub in enumerate(section.get('subheadings', [])):
-                story.append(Paragraph(sub.get('title', ''), styles['SubHeading']))
-                story.append(Paragraph(sub.get('text', ''), styles['BodyTextCustom']))
-                
-                # Fetch and add image if queried (limit images to avoid massive PDFs, maybe 1 per section)
-                if sub.get('image_query') and i == 0: 
-                    img_path = fetch_pexels_image(sub.get('image_query'))
-                    if img_path:
-                        img = Image(img_path, width=4*inch, height=2.5*inch)
-                        img.hAlign = 'CENTER'
-                        story.append(Spacer(1, 10))
-                        story.append(img)
-                        story.append(Paragraph(f"Figure: {sub.get('title', 'Component')}", ParagraphStyle(name='caption', parent=styles['Normal'], alignment=1, fontSize=9, textColor=colors.grey)))
-                        story.append(Spacer(1, 10))
-                        
-            story.append(PageBreak())
-            
-    doc.build(story)
+
 
 
 @app.route('/')
@@ -681,15 +589,15 @@ def generate():
             except Exception as json_err:
                 print(f"Failed to compile workspace JSON directly: {json_err}. Falling back to AI call.")
                 
-        print(f"Generating report for: {topic}")
+        print(f"Generating Enterprise Document for: {topic}")
         # 1. Fetch JSON structured content from OpenRouter
         report_data = generate_report_data(topic, requirements)
         
         # 2. Build PDF Document
-        filename = f"Report_{uuid.uuid4().hex[:8]}.pdf"
+        filename = f"EnterpriseDoc_{uuid.uuid4().hex[:8]}.pdf"
         filepath = os.path.join(PDF_DIR, filename)
         
-        build_pdf(report_data, filepath)
+        build_enterprise_pdf(report_data, filepath)
         
         pdf_url = url_for('download_pdf', filename=filename)
         return jsonify({"success": True, "pdf_url": pdf_url})
@@ -700,6 +608,42 @@ def generate():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+        
+    filename = secure_filename(file.filename)
+    ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
+    
+    extracted_text = ""
+    try:
+        if ext == 'pdf':
+            with pdfplumber.open(file) as pdf:
+                extracted_text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
+        elif ext in ['doc', 'docx']:
+            doc = docx.Document(file)
+            extracted_text = "\n".join([para.text for para in doc.paragraphs])
+        elif ext == 'csv':
+            df = pd.read_csv(file)
+            extracted_text = df.to_string()
+        elif ext == 'txt':
+            extracted_text = file.read().decode('utf-8')
+        else:
+            return jsonify({"error": "Unsupported file format. Please upload PDF, DOCX, CSV, or TXT."}), 400
+            
+        return jsonify({
+            "success": True, 
+            "filename": filename,
+            "extracted_text": extracted_text[:15000] # Limit size to prevent token blowup
+        })
+    except Exception as e:
+        print(f"Error extracting file: {e}")
+        return jsonify({"error": f"Failed to extract text: {str(e)}"}), 500
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -714,19 +658,30 @@ def chat():
     try:
         openrouter_key = os.getenv('OPENROUTER_API_KEY', '')
         if not openrouter_key:
-            return jsonify({"reply": "KTern En offline assistant: I am ready to help refine your proposal. Try typing 'reduce timeline' to compress the schedule, or 'show risks' to append system hazards. Let me know what you'd like to discuss!"})
+            return jsonify({"reply": "KTern En offline assistant: Please set OPENROUTER_API_KEY."})
             
-        doc_sections = [s.get('title', 'Section') for s in doc_context.get('sections', [])] if isinstance(doc_context, dict) else []
         prompt = f"""
         You are KTern En, the expert enterprise AI migration and systems consulting assistant by KaarTech.
         The user is discussing a proposal or document in the workspace.
         
         Current Document Title in Workspace: {doc_context.get('title', 'SAP ECC to S/4HANA Migration Proposal')}
-        Current Document Sections: {json.dumps(doc_sections)}
+        Current Document Sections: {json.dumps(doc_context.get('sections', []))}
         
         User's Message: {message}
         
-        Reply with a highly professional, expert consulting tone. Do not use marketing clichés or buzzwords. Provide clean, actionable advice. If they are asking for changes to the document, advise them to use specific keywords in the chat (like 'reduce timeline', 'show project risks', 'manufacturing', or 'automation') so the workspace can compile them, or explain the solution clearly. Keep your response concise (within 150-200 words).
+        You must decide if the user's message is just a general question, OR if they want you to update/rewrite a specific section of the document, OR if they want you to insert/create a new section in the document (e.g. adding a diagram, timeline, list of benefits, or custom analysis).
+        
+        Output MUST be strict JSON:
+        {{
+          "reply": "Your conversational reply to the user (e.g. 'I will add the architecture diagram section now')",
+          "action": "update_section" | "insert_section" | "none",
+          "section_id": "the-id-of-the-section (e.g. 'architecture')",
+          "section_title": "The Title of the Section (e.g. 'System Landscape Architecture')",
+          "section_icon": "FontAwesome icon class (e.g. 'fa-diagram-project')",
+          "content": "<p>The HTML content for the section. If the user asked for a diagram, you MUST include a valid Mermaid flowchart inside a <div class=\\\"mermaid\\\">...</div> tag.</p>"
+        }}
+        
+        Do not use markdown blocks around the JSON. Provide clean, actionable advice.
         """
         
         headers = {
@@ -736,7 +691,7 @@ def chat():
             "X-Title": "KTern En Chatbot"
         }
         
-        messages = [{"role": "system", "content": "You are KTern En, a professional SAP consulting AI."}]
+        messages = [{"role": "system", "content": "You are KTern En, a professional SAP consulting AI. Output ONLY valid JSON."}]
         for h in history:
             role = "user" if h.get("sender") == "user" else "assistant"
             messages.append({"role": role, "content": h.get("text", "")})
@@ -744,19 +699,59 @@ def chat():
         
         payload = {
             "model": AI_MODEL,
-            "max_tokens": 1000,
+            "max_tokens": 2000,
             "messages": messages,
             "temperature": 0.5
         }
         
         r = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=20)
         r.raise_for_status()
-        reply = r.json()['choices'][0]['message']['content']
-        return jsonify({"success": True, "reply": reply})
+        reply_text = r.json()['choices'][0]['message']['content']
+        
+        reply_text = re.sub(r'^```json\s*', '', reply_text)
+        reply_text = re.sub(r'^```\s*', '', reply_text)
+        reply_text = re.sub(r'\s*```$', '', reply_text)
+        
+        reply_json = json.loads(reply_text)
+        action = reply_json.get("action", "none")
+        section_id = reply_json.get("section_id")
+        section_title = reply_json.get("section_title")
+        section_icon = reply_json.get("section_icon", "fa-file-lines")
+        content = reply_json.get("content")
+        
+        update_section_data = None
+        insert_section_data = None
+        
+        if action == "update_section" and section_id:
+            update_section_data = {
+                "id": section_id,
+                "content": content
+            }
+            if section_title:
+                update_section_data["title"] = section_title
+            if section_icon:
+                update_section_data["icon"] = section_icon
+        elif action == "insert_section" and section_id:
+            insert_section_data = {
+                "id": section_id,
+                "title": section_title or "New Section",
+                "icon": section_icon or "fa-file-lines",
+                "content": content
+            }
+            
+        return jsonify({
+            "success": True, 
+            "reply": reply_json.get("reply", "Done."),
+            "action": action,
+            "update_section": update_section_data,
+            "insert_section": insert_section_data
+        })
         
     except Exception as e:
         print(f"Error in chat endpoint: {e}")
-        return jsonify({"reply": f"As your KTern consulting assistant, I've analyzed your query: '{message}'. To adjust the timeline to 10 weeks, type 'reduce timeline'. To see risk items, type 'show risks'."})
+        import traceback
+        traceback.print_exc()
+        return jsonify({"reply": f"As your KTern consulting assistant, I've analyzed your query: '{message}'. Currently facing an error: {e}"})
 
 
 @app.route('/assist', methods=['POST'])
@@ -832,6 +827,30 @@ def assist():
         print(f"Error in assist endpoint: {e}")
         return jsonify({"error": str(e)}), 500
 
+
+
+@app.route('/generate_doc', methods=['POST'])
+def generate_doc():
+    if request.is_json:
+        data = request.json
+        topic = data.get('topic')
+        requirements = data.get('requirements', '')
+    else:
+        topic = request.form.get('topic')
+        requirements = request.form.get('requirements', '')
+        
+    if not topic:
+        return jsonify({"error": "Topic is required"}), 400
+        
+    try:
+        print(f"Generating dynamic document content for topic: {topic}")
+        report_data = generate_report_data(topic, requirements)
+        return jsonify({"success": True, "data": report_data})
+    except Exception as e:
+        print(f"Error during document generation: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/download/<filename>')

@@ -324,6 +324,15 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'neutral',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+</script>
 <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>

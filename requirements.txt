@@ -3,3 +3,7 @@ reportlab
 requests
 python-dotenv
 Pillow
+pdfplumber
+python-docx
+pandas
+werkzeug

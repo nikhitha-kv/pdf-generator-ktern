@@ -59,10 +59,13 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   let versions = [];
+  let lastPipelineLogs = [];
   let conversationHistory = [];
   let currentPromptIndex = 0;
   let currentChatId = null;
   let activeMessages = [];
+  let workspaceContext = "";
+  let recognition = null;
 
   // --- Document Knowledge Base (SAP S/4HANA Migration Proposal Template) ---
   const initialProposalData = {
@@ -235,13 +238,37 @@ document.addEventListener('DOMContentLoaded', () => {
     id: "architecture",
     title: "System Landscape Architecture",
     icon: "fa-diagram-project",
-    content: "<p>The modernized S/4HANA target hybrid-cloud structure verified by our Orchestrator Agent:</p><div class='diagram-container'><div class='diagram-placeholder'><i class='fa-solid fa-network-wired'></i><span>SAP S/4HANA Core Architecture Diagram Ready</span><span style='font-size:0.7rem; color:var(--brand-blue)'>[ Hybrid Cloud Setup &middot; Azure/AWS Landing Zone &middot; SAP Fiori UX Gateway ]</span></div></div>"
+    content: `<p>The modernized S/4HANA target hybrid-cloud structure verified by our Orchestrator Agent:</p>
+<div class="mermaid">
+graph TD
+    classDef client fill:#f8fafc,stroke:#475569,stroke-width:1.5px
+    classDef web fill:#eff6ff,stroke:#2563eb,stroke-width:1.5px
+    classDef app fill:#fef3c7,stroke:#d97706,stroke-width:2px
+    classDef db fill:#fff1f2,stroke:#e11d48,stroke-width:1.5px
+
+    Client["Client / Mobile UX<br/>SAP Fiori Launchpad"]:::client
+    Gateway["SAP Gateway Server<br/>OData / HTTPS"]:::web
+    AppServer["SAP S/4HANA Core<br/>ABAP Application Server"]:::app
+    DBServer["SAP HANA DB Layer<br/>In-Memory Database"]:::db
+
+    Client -->|HTTPS Port 443| Gateway
+    Gateway -->|RFC Connection| AppServer
+    AppServer -->|SQL In-Memory Access| DBServer
+</div>`
   };
 
   // --- Initial Setup ---
   initTheme();
   setupEventListeners();
+  localStorage.removeItem('ktern_active_chat_id');
   loadAllConversations();
+
+  // Responsive panel auto-collapse on small viewports
+  if (window.innerWidth <= 1024) {
+    docPanel.classList.add('collapsed');
+    sidebar.classList.add('collapsed');
+    sidebarExpandBtn.classList.remove('hidden');
+  }
 
   // --- Theme Controller ---
   function initTheme() {
@@ -298,7 +325,10 @@ document.addEventListener('DOMContentLoaded', () => {
       tabContentJson.classList.remove('active');
 
       if (targetTab === 'preview') tabContentPreview.classList.add('active');
-      else if (targetTab === 'agents') tabContentAgents.classList.add('active');
+      else if (targetTab === 'agents') {
+        tabContentAgents.classList.add('active');
+        renderAgentsTab();
+      }
       else if (targetTab === 'versions') tabContentVersions.classList.add('active');
       else if (targetTab === 'json') tabContentJson.classList.add('active');
     });
@@ -351,6 +381,114 @@ document.addEventListener('DOMContentLoaded', () => {
         item.style.display = text.includes(query) ? 'flex' : 'none';
       });
     });
+
+    // File Upload Listener
+    const paperclipBtn = document.querySelector('.fa-paperclip').parentElement;
+    if (paperclipBtn) {
+      paperclipBtn.addEventListener('click', triggerFileUpload);
+    }
+
+    // Microphone Listener
+    const micBtn = document.querySelector('.fa-microphone').parentElement;
+    if (micBtn) {
+      micBtn.addEventListener('click', toggleSpeechRecognition);
+    }
+  }
+
+  // --- File Upload Logic ---
+  function triggerFileUpload() {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.pdf,.doc,.docx,.csv,.txt';
+    fileInput.style.display = 'none';
+    
+    fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      showToast(`Uploading ${file.name}...`, 'info');
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      try {
+        const response = await fetch('/upload', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+          workspaceContext += `\n\n[UPLOADED DOCUMENT CONTEXT - ${data.filename}]:\n${data.extracted_text}\n`;
+          showToast(`Extracted ${data.filename} into workspace memory!`, 'success');
+          appendMessage(`<i class="fa-solid fa-file-circle-check"></i> <b>${data.filename}</b> has been uploaded and read into my memory. How would you like to use this context?`, 'assistant', true);
+        } else {
+          showToast(`Upload failed: ${data.error}`, 'error');
+        }
+      } catch (err) {
+        showToast('Upload request failed.', 'error');
+      }
+    });
+    
+    document.body.appendChild(fileInput);
+    fileInput.click();
+    document.body.removeChild(fileInput);
+  }
+
+  // --- Speech Recognition Logic ---
+  function toggleSpeechRecognition() {
+    const micBtn = document.querySelector('.fa-microphone').parentElement;
+    
+    if (recognition && recognition.isRecording) {
+      recognition.stop();
+      return;
+    }
+    
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      showToast('Speech recognition not supported in this browser.', 'error');
+      return;
+    }
+    
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    
+    recognition.onstart = function() {
+      recognition.isRecording = true;
+      micBtn.innerHTML = '<i class="fa-solid fa-stop" style="color:var(--brand-red);"></i>';
+      showToast('Listening...', 'info');
+    };
+    
+    recognition.onresult = function(event) {
+      let interimTranscript = '';
+      let finalTranscript = '';
+      
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        } else {
+          interimTranscript += event.results[i][0].transcript;
+        }
+      }
+      
+      if (finalTranscript) {
+        chatInput.value += (chatInput.value ? ' ' : '') + finalTranscript;
+        chatInput.dispatchEvent(new Event('input'));
+      }
+    };
+    
+    recognition.onend = function() {
+      recognition.isRecording = false;
+      micBtn.innerHTML = '<i class="fa-solid fa-microphone"></i>';
+    };
+    
+    recognition.onerror = function(event) {
+      showToast(`Speech error: ${event.error}`, 'error');
+      recognition.isRecording = false;
+      micBtn.innerHTML = '<i class="fa-solid fa-microphone"></i>';
+    };
+    
+    recognition.start();
   }
 
   // --- Reset Workspace ---
@@ -371,6 +509,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     currentChatId = null;
     activeMessages = [];
+    workspaceContext = "";
     localStorage.removeItem('ktern_active_chat_id');
     updateSidebarListOnly();
 
@@ -457,11 +596,259 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --- Multi-Agent Pipeline Simulator ---
+  let backendLoading = false;
+  let pendingAction = null;
+  let pendingReplyText = "";
+  let pendingUpdateDesc = "";
+
+  async function startBackendProcessing(prompt) {
+    backendLoading = true;
+    pendingAction = null;
+    pendingReplyText = "";
+    pendingUpdateDesc = "";
+
+    const cleanPrompt = prompt.toLowerCase();
+    const isQA = docState.sections && docState.sections.length > 0;
+
+    if (isQA) {
+      // Direct keyword-based intercepts for active document modifications
+      if (cleanPrompt.includes('architecture') || cleanPrompt.includes('diagram')) {
+        pendingAction = () => {
+          insertDocumentSection(architectureData);
+          renderDocumentState();
+        };
+        pendingReplyText = "Our <strong>MCP Landscape Agent</strong> has fetched and generated a verified hybrid cloud migration architecture blueprint. I have inserted the <strong>System Landscape Architecture</strong> diagram panel at the end of the proposal document workspace.";
+        pendingUpdateDesc = "Embedded cloud landscape architecture blueprint";
+      }
+      else if (cleanPrompt.includes('reduce') || cleanPrompt.includes('timeline')) {
+        pendingAction = () => {
+          updateDocumentSection(timelineReductionData);
+          renderDocumentState();
+        };
+        pendingReplyText = "Our <strong>Formatting & Planning Agents</strong> have successfully redesigned your migration architecture. The plan is now accelerated, utilizing automated tools to reduce the schedule from <strong>18 down to 10 weeks</strong>. I have updated the <strong>Timeline & Phases</strong> card in the document workspace live.";
+        pendingUpdateDesc = "Reduced timeline via automation";
+      }
+      else if (cleanPrompt.includes('risk') || cleanPrompt.includes('mitigation')) {
+        pendingAction = () => {
+          insertDocumentSection(risksData);
+          renderDocumentState();
+        };
+        pendingReplyText = "The <strong>Validation Agent</strong> has run a full risk profiling suite against your ECC custom setups. I have appended a dedicated <strong>Risk Analysis & Mitigations</strong> section to your live document detailing critical custom code and system freeze mitigations.";
+        pendingUpdateDesc = "Added custom code risk profiling";
+      }
+      else if (cleanPrompt.includes('automation') || cleanPrompt.includes('ktern')) {
+        pendingAction = () => {
+          insertDocumentSection(kternAutomationData);
+          renderDocumentState();
+        };
+        pendingReplyText = "I have appended the <strong>KTern Automation Benefits</strong> module to your document. This outlines automated profiling, auto-generated testing matrices, and orchestrated core configurations in your digital upgrade pipeline.";
+        pendingUpdateDesc = "Integrated KTern automation benefits";
+      }
+      else if (cleanPrompt.includes('manufacturing')) {
+        pendingAction = () => {
+          updateDocumentSection(manufacturingDomainData);
+          renderDocumentState();
+        };
+        pendingReplyText = "I have customized the executive summary specifically for a <strong>manufacturing domain</strong>. The focus has been aligned with industrial automation integration, materials tracking protocols, and Overall Equipment Effectiveness (OEE) metrics.";
+        pendingUpdateDesc = "Refocused on manufacturing industry domain";
+      }
+      else {
+        // Send custom query to backend chat AI model
+        try {
+          const history = [];
+          const bubbles = document.querySelectorAll('.message-bubble');
+          const messages = document.querySelectorAll('.message');
+          for (let idx = Math.max(0, messages.length - 4); idx < messages.length - 1; idx++) {
+            const sender = messages[idx].classList.contains('user') ? 'user' : 'assistant';
+            const text = bubbles[idx] ? bubbles[idx].textContent : '';
+            history.push({ sender, text });
+          }
+
+          const response = await fetch('/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: prompt + (workspaceContext ? `\n\n[Attached Workspace Data for reference]:\n${workspaceContext}` : ""),
+              history: history,
+              doc_context: docState
+            })
+          });
+          const resData = await response.json();
+          if (resData.success) {
+            pendingReplyText = resData.reply;
+            
+            pendingAction = () => {
+              if (resData.update_section) {
+                updateDocumentSection(resData.update_section);
+                pendingUpdateDesc = `AI Updated section: ${resData.update_section.id}`;
+              }
+              if (resData.insert_section) {
+                insertDocumentSection(resData.insert_section);
+                pendingUpdateDesc = `AI Added section: ${resData.insert_section.id}`;
+              }
+              renderDocumentState();
+            };
+          } else {
+            throw new Error(resData.error || "Failed to fetch response");
+          }
+        } catch (err) {
+          console.error(err);
+          pendingReplyText = `As your KTern consulting assistant, I've analyzed your query: '${prompt}'. I am experiencing a connection issue with the central hub.`;
+          pendingAction = null;
+          pendingUpdateDesc = "";
+        }
+      }
+    }
+    else {
+      // Check for predefined templates
+      const predefinedTemplates = [
+        "generate a comprehensive sap ecc to s/4hana migration proposal for a manufacturing company including timeline, risks, and ktern automation benefits",
+        "generate a functional requirements specification (frs) document for an enterprise sap implementation project",
+        "create a business requirements document (brd) for a digital transformation initiative",
+        "generate a project charter document for an enterprise sap s/4hana implementation",
+        "create a user acceptance testing (uat) plan and test case document for sap go-live",
+        "generate sap ecc to s/4hana migration proposal",
+        "create a business requirements document for digital transformation",
+        "generate a project charter for enterprise sap implementation",
+        "create uat test plan for sap s/4hana go-live",
+        "sap migration proposal",
+        "frs generator",
+        "brd creation",
+        "project charter",
+        "uat generator"
+      ];
+
+      const isPredefined = predefinedTemplates.includes(cleanPrompt) ||
+                           cleanPrompt.includes('uat') ||
+                           cleanPrompt.includes('user acceptance') ||
+                           cleanPrompt.includes('frs') ||
+                           cleanPrompt.includes('functional requirements') ||
+                           cleanPrompt.includes('brd') ||
+                           cleanPrompt.includes('business requirements') ||
+                           cleanPrompt.includes('charter') ||
+                           cleanPrompt.includes('proposal') ||
+                           cleanPrompt.includes('migration');
+
+      if (isPredefined) {
+        if (cleanPrompt.includes('uat') || cleanPrompt.includes('user acceptance')) {
+          pendingAction = () => {
+            initializeDocument(initialUatData);
+          };
+          pendingReplyText = "Here is the first draft of your <strong>User Acceptance Testing (UAT) Plan</strong>. Our multi-agent squad has prepared the UAT Strategy, testing scopes, detailed key business scenarios, and the execution timelines. The document is active in the workspace panel.";
+          pendingUpdateDesc = "Initial UAT Test Plan compiled";
+        }
+        else if (cleanPrompt.includes('frs') || cleanPrompt.includes('functional requirements')) {
+          pendingAction = () => {
+            initializeDocument(initialFrsData);
+          };
+          pendingReplyText = "Here is the first draft of your <strong>Functional Requirements Specification (FRS)</strong>. Our content and formatting agents have drafted the Functional Architecture, Module Scope, and Fiori UI enhancements list. The document is loaded in the workspace.";
+          pendingUpdateDesc = "Initial Functional Specification compiled";
+        }
+        else if (cleanPrompt.includes('brd') || cleanPrompt.includes('business requirements')) {
+          pendingAction = () => {
+            initializeDocument(initialBrdData);
+          };
+          pendingReplyText = "Here is the first draft of your <strong>Business Requirements Document (BRD)</strong>. Our coordination squad has mapped the business objectives, core requirements matrix, stakeholder impact metrics, and out-of-scope parameters. The document is loaded in the workspace.";
+          pendingUpdateDesc = "Initial BRD Document compiled";
+        }
+        else if (cleanPrompt.includes('charter') || cleanPrompt.includes('project charter')) {
+          pendingAction = () => {
+            initializeDocument(initialCharterData);
+          };
+          pendingReplyText = "Here is the first draft of your <strong>Project Charter</strong>. Our planning squad has established the project purpose, key targets, organizational directory, and project governance stages. The document is loaded in the workspace.";
+          pendingUpdateDesc = "Initial Project Charter compiled";
+        }
+        else {
+          pendingAction = () => {
+            initializeDocument(initialProposalData);
+          };
+          pendingReplyText = "Here is the first draft of your <strong>SAP ECC to S/4HANA Migration Proposal</strong>. Our multi-agent squad has drafted the Executive Summary, Objectives, Project Scope, and a detailed 18-week Transition Timeline. The live document is now active in the workspace panel.";
+          pendingUpdateDesc = "Initial Migration Proposal draft compiled";
+        }
+      }
+      else {
+        // Dynamic custom document generation via backend /generate_doc
+        try {
+          const response = await fetch('/generate_doc', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              topic: prompt,
+              requirements: workspaceContext
+            })
+          });
+          const resData = await response.json();
+          if (resData.success && resData.data) {
+            const generatedData = resData.data;
+            
+            generatedData.sections.forEach(sec => {
+              if (!sec.icon) {
+                const id = (sec.id || '').toLowerCase();
+                const title = (sec.title || '').toLowerCase();
+                if (id.includes('summary') || title.includes('summary')) sec.icon = 'fa-file-signature';
+                else if (id.includes('objective') || title.includes('objective')) sec.icon = 'fa-bullseye';
+                else if (id.includes('scope') || title.includes('scope')) sec.icon = 'fa-arrows-to-eye';
+                else if (id.includes('timeline') || title.includes('timeline') || id.includes('phase')) sec.icon = 'fa-calendar-days';
+                else if (id.includes('risk') || title.includes('risk') || id.includes('mitigation')) sec.icon = 'fa-triangle-exclamation';
+                else if (id.includes('benefit') || title.includes('benefit') || id.includes('value')) sec.icon = 'fa-robot';
+                else if (id.includes('architecture') || title.includes('architecture') || id.includes('design')) sec.icon = 'fa-diagram-project';
+                else if (id.includes('requirements') || title.includes('requirements') || id.includes('matrix')) sec.icon = 'fa-list-check';
+                else sec.icon = 'fa-file-lines';
+              }
+            });
+
+            pendingAction = () => {
+              initializeDocument(generatedData);
+            };
+            pendingReplyText = `Here is the first draft of your custom document: <strong>${generatedData.title}</strong>. Our multi-agent squad has researched and generated logical sections tailored to your query. The live document is now active in the workspace panel.`;
+            pendingUpdateDesc = `Initial Custom Document: ${generatedData.title}`;
+          } else {
+            throw new Error(resData.error || "Failed to generate document");
+          }
+        } catch (err) {
+          console.error(err);
+          pendingAction = () => {
+            initializeDocument(initialProposalData);
+          };
+          pendingReplyText = `I encountered an issue generating a custom document for "${prompt}". Here is a standard <strong>SAP ECC to S/4HANA Migration Proposal</strong> as a starting point instead.`;
+          pendingUpdateDesc = "Initial Migration Proposal draft compiled (Fallback)";
+        }
+      }
+    }
+
+    backendLoading = false;
+  }
+
   function executeMultiAgentPipeline(userPrompt) {
     // 1. Show dynamic loading assistant bubble
     const assistantBubble = appendMessage('<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>', 'assistant', false);
 
-    // 2. Initialize Agent Tab UI
+    // 2. Automatically switch to the Agents tab
+    docTabs.forEach(t => t.classList.remove('active'));
+    document.getElementById('tabAgents').classList.add('active');
+    tabContentPreview.classList.remove('active');
+    tabContentVersions.classList.remove('active');
+    tabContentJson.classList.remove('active');
+    tabContentAgents.classList.add('active');
+
+    // Reset logs array for this run
+    lastPipelineLogs = [];
+
+    function addAgentLog(text) {
+      const timestamp = new Date().toLocaleTimeString();
+      const logText = `[${timestamp}] ${text}`;
+      lastPipelineLogs.push(logText);
+      const agentLogs = document.getElementById('agentLogs');
+      if (agentLogs) {
+        const logLine = document.createElement('div');
+        logLine.className = 'agent-log-line';
+        logLine.innerHTML = logText;
+        agentLogs.appendChild(logLine);
+        agentLogs.parentElement.scrollTop = agentLogs.parentElement.scrollHeight;
+      }
+    }
+
+    // 3. Initialize Agent Tab UI
     tabContentAgents.innerHTML = `
       <div class="agent-monitor-panel">
         <div class="agent-monitor-title">Live Agent Engine Logs</div>
@@ -471,7 +858,6 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
 
     const pipelineNodes = document.getElementById('pipelineNodes');
-    const agentLogs = document.getElementById('agentLogs');
 
     const agents = [
       { name: "Coordinator Agent", icon: "fa-user-tie", task: "Planning and scheduling workspace workflow...", model: "Gemini 3.5 Pro", latency: "0.8s" },
@@ -511,8 +897,24 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
+    // Start backend processing fetch in parallel
+    startBackendProcessing(userPrompt);
+
     // Run progressive pipeline animation
     let step = 0;
+    const compilerLogs = [
+      "PDF Compiler: Initializing ReportLab document compilation flow...",
+      "PDF Compiler: Mapping corporate page templates (Header & Footer frames)...",
+      "PDF Compiler: Sanitizing markup cells and structural list tags...",
+      "PDF Compiler: Converting inline attributes to ParagraphStyle formats...",
+      "PDF Compiler: Generating high-fidelity grid layouts for tables...",
+      "PDF Compiler: Drawing custom SVG architecture blueprints and networks...",
+      "PDF Compiler: Packing flowable story elements (headings, tables, and frames)...",
+      "PDF Compiler: Executing PDF engine builder and outputting printable streams..."
+    ];
+    let compilerLogIndex = 0;
+    let keepPulsingTimer = null;
+
     function runNextStep() {
       if (step > 0) {
         const prevNode = document.getElementById(`agent-node-${step - 1}`);
@@ -525,148 +927,91 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (step < agents.length) {
+        // If we reach the final compiler step and backend is still thinking, hold the step and pulse
+        if (step === 5 && backendLoading) {
+          const currentNode = document.getElementById(`agent-node-${step}`);
+          currentNode.className = 'agent-node active';
+          currentNode.querySelector('.agent-status-badge').textContent = 'Running';
+
+          // Print first compiler log if needed
+          if (compilerLogIndex === 0) {
+            addAgentLog(`<span style="color:var(--brand-red)">${agents[step].name}</span>: ${agents[step].task}`);
+          }
+
+          keepPulsingTimer = setInterval(() => {
+            if (!backendLoading) {
+              clearInterval(keepPulsingTimer);
+              step = 5;
+              runNextStep(); // complete the final step
+            } else {
+              if (compilerLogIndex < compilerLogs.length) {
+                addAgentLog(`<span style="color:var(--brand-red)">${agents[step].name}</span>: ${compilerLogs[compilerLogIndex]}`);
+                compilerLogIndex++;
+              } else {
+                addAgentLog(`<span style="color:var(--brand-red)">${agents[step].name}</span>: PDF Compiler: Finalizing compilation buffers...`);
+              }
+            }
+          }, 1500);
+          return;
+        }
+
         const currentNode = document.getElementById(`agent-node-${step}`);
         currentNode.className = 'agent-node active';
         currentNode.querySelector('.agent-status-badge').textContent = 'Running';
 
         // Add log
-        const logLine = document.createElement('div');
-        logLine.className = 'agent-log-line';
-        logLine.innerHTML = `[${new Date().toLocaleTimeString()}] <span style="color:var(--brand-red)">${agents[step].name}</span>: ${agents[step].task}`;
-        agentLogs.appendChild(logLine);
-        agentLogs.parentElement.scrollTop = agentLogs.parentElement.scrollHeight;
+        addAgentLog(`<span style="color:var(--brand-red)">${agents[step].name}</span>: ${agents[step].task}`);
 
         step++;
-        setTimeout(runNextStep, 900);
+        setTimeout(runNextStep, 800);
       } else {
-        // Pipeline completed. Stream response content.
+        // Pipeline complete
+        addAgentLog(`<span style="color:#10b981">Engine Workflow</span>: Multi-agent execution completed. Workspace updating...`);
+
+        // Apply document updates
+        if (pendingAction) {
+          pendingAction();
+        }
+
+        // Swivel back to Preview tab automatically so user sees the change
+        setTimeout(() => {
+          docTabs.forEach(t => t.classList.remove('active'));
+          document.getElementById('tabPreview').classList.add('active');
+          tabContentAgents.classList.remove('active');
+          tabContentVersions.classList.remove('active');
+          tabContentJson.classList.remove('active');
+          tabContentPreview.classList.add('active');
+        }, 1000);
+
+        // Stream reply text
         isGenerating = false;
         activeModel.textContent = "AI Ready";
-        streamAIResponse(userPrompt, assistantBubble);
-      }
-    }
-
-    // Launch pipeline sequence
-    runNextStep();
-  }
-
-  // --- Response Generator / Document Modifiers ---
-  async function streamAIResponse(prompt, chatBubbleElement) {
-    let replyText = "";
-    let updateDescription = "";
-
-    // Normalize prompt strings to match user actions
-    const cleanPrompt = prompt.toLowerCase();
-
-    if (cleanPrompt.includes('reduce') || cleanPrompt.includes('timeline')) {
-      // 1. Reduce Timeline
-      updateDocumentSection(timelineReductionData);
-      replyText = "Our <strong>Formatting & Planning Agents</strong> have successfully redesigned your migration architecture. The plan is now accelerated, utilizing automated tools to reduce the schedule from <strong>18 down to 10 weeks</strong>. I have updated the <strong>Timeline & Phases</strong> card in the document workspace live.";
-      updateDescription = "Reduced timeline via automation";
-    }
-    else if (cleanPrompt.includes('risk') || cleanPrompt.includes('mitigation')) {
-      // 2. Add Risks
-      insertDocumentSection(risksData);
-      replyText = "The <strong>Validation Agent</strong> has run a full risk profiling suite against your ECC custom setups. I have appended a dedicated <strong>Risk Analysis & Mitigations</strong> section to your live document detailing critical custom code and system freeze mitigations.";
-      updateDescription = "Added custom code risk profiling";
-    }
-    else if (cleanPrompt.includes('manufacturing')) {
-      // 3. Manufacturing Domain
-      updateDocumentSection(manufacturingDomainData);
-      replyText = "I have customized the executive summary specifically for a <strong>manufacturing domain</strong>. The focus has been aligned with industrial automation integration, materials tracking protocols, and Overall Equipment Effectiveness (OEE) metrics.";
-      updateDescription = "Refocused on manufacturing industry domain";
-    }
-    else if (cleanPrompt.includes('automation') || cleanPrompt.includes('ktern')) {
-      // 4. KTern Automation
-      insertDocumentSection(kternAutomationData);
-      replyText = "I have appended the <strong>KTern Automation Benefits</strong> module to your document. This outlines automated profiling, auto-generated testing matrices, and orchestrated core configurations in your digital upgrade pipeline.";
-      updateDescription = "Integrated KTern automation benefits";
-    }
-    else if (cleanPrompt.includes('architecture') || cleanPrompt.includes('diagram')) {
-      // 5. Architecture
-      insertDocumentSection(architectureData);
-      replyText = "Our <strong>MCP Landscape Agent</strong> has fetched and generated a verified hybrid cloud migration architecture blueprint. I have inserted the high-res layout panel at the end of the proposal document workspace.";
-      updateDescription = "Embedded cloud landscape architecture blueprint";
-    }
-    else {
-      // 6. Check if document is already initialized. If yes, this is a follow-up Q&A query!
-      if (docState.sections && docState.sections.length > 0) {
-        chatBubbleElement.innerHTML = '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
-        try {
-          const history = [];
-          const bubbles = document.querySelectorAll('.message-bubble');
-          const messages = document.querySelectorAll('.message');
-          for (let idx = Math.max(0, messages.length - 4); idx < messages.length - 1; idx++) {
-            const sender = messages[idx].classList.contains('user') ? 'user' : 'assistant';
-            const text = bubbles[idx] ? bubbles[idx].textContent : '';
-            history.push({ sender, text });
+        
+        assistantBubble.innerHTML = "";
+        let i = 0;
+        const words = pendingReplyText.split(" ");
+        function streamToken() {
+          if (i < words.length) {
+            assistantBubble.innerHTML += words[i] + " ";
+            i++;
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            setTimeout(streamToken, 30);
+          } else {
+            followupBar.classList.remove('hidden');
+            activeMessages.push({ sender: 'assistant', text: pendingReplyText });
+            saveActiveChat();
+            if (pendingUpdateDesc) {
+              saveDocumentVersion(pendingUpdateDesc);
+            }
+            showToast("Workspace updated live!", "success");
+            sendBtn.disabled = false;
           }
-
-          const response = await fetch('/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              message: prompt,
-              history: history,
-              doc_context: docState
-            })
-          });
-          const data = await response.json();
-          replyText = data.reply;
-        } catch (err) {
-          replyText = `As your KTern consulting assistant, I've analyzed your query: '${prompt}'. To adjust the timeline to 10 weeks, type 'reduce timeline'. To see risk items, type 'show risks'.`;
         }
-        updateDescription = ""; // General Q&A does not modify the document
-      } else {
-        // Decide which template to compile based on keywords in the initial prompt!
-        if (cleanPrompt.includes('uat') || cleanPrompt.includes('user acceptance')) {
-          initializeDocument(initialUatData);
-          replyText = "Here is the first draft of your <strong>User Acceptance Testing (UAT) Plan</strong>. Our multi-agent squad has prepared the UAT Strategy, testing scopes, detailed key business scenarios, and the execution timelines. The document is active in the workspace panel.";
-          updateDescription = "Initial UAT Test Plan compiled";
-        }
-        else if (cleanPrompt.includes('frs') || cleanPrompt.includes('functional requirements')) {
-          initializeDocument(initialFrsData);
-          replyText = "Here is the first draft of your <strong>Functional Requirements Specification (FRS)</strong>. Our content and formatting agents have drafted the Functional Architecture, Module Scope, and Fiori UI enhancements list. The document is loaded in the workspace.";
-          updateDescription = "Initial Functional Specification compiled";
-        }
-        else if (cleanPrompt.includes('brd') || cleanPrompt.includes('business requirements')) {
-          initializeDocument(initialBrdData);
-          replyText = "Here is the first draft of your <strong>Business Requirements Document (BRD)</strong>. Our coordination squad has mapped the business objectives, core requirements matrix, stakeholder impact metrics, and out-of-scope parameters. The document is loaded in the workspace.";
-          updateDescription = "Initial BRD Document compiled";
-        }
-        else if (cleanPrompt.includes('charter') || cleanPrompt.includes('project charter')) {
-          initializeDocument(initialCharterData);
-          replyText = "Here is the first draft of your <strong>Project Charter</strong>. Our planning squad has established the project purpose, key targets, organizational directory, and project governance stages. The document is loaded in the workspace.";
-          updateDescription = "Initial Project Charter compiled";
-        }
-        else {
-          // Default: SAP ECC to S/4HANA Migration Proposal
-          initializeDocument(initialProposalData);
-          replyText = "Here is the first draft of your <strong>SAP ECC to S/4HANA Migration Proposal</strong>. Our multi-agent squad has drafted the Executive Summary, Objectives, Project Scope, and a detailed 18-week Transition Timeline. The live document is now active in the workspace panel.";
-          updateDescription = "Initial Migration Proposal draft compiled";
-        }
+        streamToken();
       }
     }
 
-    // Stream the assistant reply token-by-token
-    chatBubbleElement.innerHTML = "";
-    let i = 0;
-    const words = replyText.split(" ");
-    function streamToken() {
-      if (i < words.length) {
-        chatBubbleElement.innerHTML += words[i] + " ";
-        i++;
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-        setTimeout(streamToken, 30);
-      } else {
-        // Complete streaming
-        followupBar.classList.remove('hidden');
-        activeMessages.push({ sender: 'assistant', text: replyText });
-        saveDocumentVersion(updateDescription);
-        showToast("Workspace updated live!", "success");
-      }
-    }
-    streamToken();
+    runNextStep();
   }
 
   // --- Document Manager Controls ---
@@ -766,6 +1111,20 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('click', () => {
       document.querySelectorAll('.ai-dropdown-menu').forEach(m => m.classList.remove('show'));
     });
+
+    // Run Mermaid renderer
+    setTimeout(() => {
+      if (window.mermaid) {
+        try {
+          document.querySelectorAll('.mermaid').forEach(el => {
+            el.removeAttribute('data-processed');
+          });
+          window.mermaid.init(undefined, document.querySelectorAll('.mermaid'));
+        } catch (e) {
+          console.error("Mermaid rendering error:", e);
+        }
+      }
+    }, 50);
 
     // Sync JSON viewer & panel title state
     docPanelStatus.textContent = "Document saved";
@@ -1168,7 +1527,8 @@ document.addEventListener('DOMContentLoaded', () => {
         timestamp: Date.now(),
         messages: activeMessages,
         docState: docState,
-        versions: versions
+        versions: versions,
+        workspaceContext: workspaceContext
       };
       conversations.push(activeChat);
     } else {
@@ -1176,6 +1536,7 @@ document.addEventListener('DOMContentLoaded', () => {
       activeChat.messages = activeMessages;
       activeChat.docState = docState;
       activeChat.versions = versions;
+      activeChat.workspaceContext = workspaceContext;
       
       if (activeChat.title === 'New Conversation' || activeChat.title.startsWith('New Chat')) {
         const firstUserMsg = activeMessages.find(m => m.sender === 'user');
@@ -1297,6 +1658,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     docState = chat.docState || { title: "", client: "KaarTech Enterprise", date: new Date().toLocaleDateString('en-US'), sections: [] };
+    workspaceContext = chat.workspaceContext || "";
     
     if (docState.title !== "") {
       docEmptyState.classList.add('hidden');
@@ -1325,6 +1687,79 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function appendMessageUI(text, sender) {
     appendMessage(text, sender, false);
+  }
+
+  function renderAgentsTab() {
+    // If the pipeline is running, we don't overwrite it
+    if (backendLoading) return;
+
+    // Fleet of agents
+    const agentsList = [
+      { name: "Coordinator Agent", icon: "fa-user-tie", desc: "Orchestrates multi-agent routing, tool executions, and step-by-step document assembly planners.", model: "Gemini 3.5 Pro", status: "Standby" },
+      { name: "Content Agent", icon: "fa-pen-nib", desc: "Generates professional copy, business requirements, summaries, and customized domain-specific templates.", model: "Claude 3.5 Sonnet", status: "Standby" },
+      { name: "Validation Agent", icon: "fa-shield-halved", desc: "Analyzes system design compatibility, checks clean-core standard compliance, and validates Mermaid flowchart syntax.", model: "Gemini 3.5 Flash", status: "Standby" },
+      { name: "Formatting Agent", icon: "fa-paint-roller", desc: "Formats text nodes, styles lists and tables, sanitizes HTML attributes, and structures timeline modules.", model: "DeepSeek V3", status: "Standby" },
+      { name: "MCP Gateway", icon: "fa-circle-nodes", desc: "Invokes system tools and external APIs, accesses context memory, and coordinates local resource bindings.", model: "Tool Executor", status: "Standby" },
+      { name: "PDF Compiler", icon: "fa-file-pdf", desc: "Renders story flows, builds custom grids and tables, compiles Mermaid schemas, and outputs print-ready buffers.", model: "ReportLab Engine", status: "Standby" }
+    ];
+
+    let fleetHtml = "";
+    agentsList.forEach(agent => {
+      fleetHtml += `
+        <div class="agent-fleet-card">
+          <div class="agent-fleet-header">
+            <div class="agent-fleet-name-group">
+              <i class="fa-solid ${agent.icon}"></i>
+              <span>${agent.name}</span>
+            </div>
+            <span class="agent-fleet-status-dot"><i class="fa-solid fa-circle-dot"></i> ${agent.status}</span>
+          </div>
+          <p class="agent-fleet-desc">${agent.desc}</p>
+          <div class="agent-fleet-meta">
+            <span class="agent-fleet-meta-item"><i class="fa-solid fa-brain"></i> ${agent.model}</span>
+            <span class="agent-fleet-meta-item"><i class="fa-solid fa-gauge-simple-high"></i> 99.8% Conf</span>
+          </div>
+        </div>
+      `;
+    });
+
+    let logsHtml = "";
+    if (lastPipelineLogs && lastPipelineLogs.length > 0) {
+      lastPipelineLogs.forEach(log => {
+        logsHtml += `<div class="agent-log-line">${log}</div>`;
+      });
+    } else {
+      logsHtml = `<div class="agent-log-line" style="color:var(--text-muted)">No execution logs yet. Start a chat request to spin up the agents!</div>`;
+    }
+
+    tabContentAgents.innerHTML = `
+      <div class="agent-fleet-dashboard">
+        <div class="agent-fleet-status-banner">
+          <div class="agent-fleet-status-label">
+            <i class="fa-solid fa-server"></i>
+            <span>Agent Engine Status</span>
+          </div>
+          <span class="agent-fleet-status-tag">
+            <span class="model-dot" style="margin-right:2px; animation: pulse-green 2s infinite;"></span>
+            Online / Idle
+          </span>
+        </div>
+        
+        <div class="agent-fleet-grid">
+          ${fleetHtml}
+        </div>
+        
+        <div class="agent-monitor-panel" style="margin-top:0.5rem;">
+          <div class="agent-monitor-title" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Engine Audit Log (Last Run)</span>
+            <span style="font-size:0.65rem; color:var(--text-muted); text-transform:none;">${lastPipelineLogs.length} entries</span>
+          </div>
+          <div class="agent-monitor-logs" id="idleAgentLogs">
+            ${logsHtml}
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   function deleteConversation(chatId) {
