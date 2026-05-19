@@ -61,6 +61,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let versions = [];
   let conversationHistory = [];
   let currentPromptIndex = 0;
+  let currentChatId = null;
+  let activeMessages = [];
 
   // --- Document Knowledge Base (SAP S/4HANA Migration Proposal Template) ---
   const initialProposalData = {
@@ -90,6 +92,112 @@ document.addEventListener('DOMContentLoaded', () => {
         title: "Migration Timeline & Phases",
         icon: "fa-calendar-days",
         content: "<div class='timeline-list'><div class='timeline-node'><div class='timeline-phase'>Phase 1: Assessment & Planning</div><div class='timeline-duration'>Weeks 1 - 4</div><div class='timeline-desc'>Execute KTern code profiling, assess system custom code complexity, and establish migration blueprint.</div></div><div class='timeline-node'><div class='timeline-phase'>Phase 2: Database & Architecture Setup</div><div class='timeline-duration'>Weeks 5 - 8</div><div class='timeline-desc'>Provision targeted cloud landing zones and construct sandbox environments for dry-run migrations.</div></div><div class='timeline-node'><div class='timeline-phase'>Phase 3: Code Refactoring & Data Migration</div><div class='timeline-duration'>Weeks 9 - 14</div><div class='timeline-desc'>Optimize standard structures, migrate master/transactional data, and execute clean-core rules.</div></div><div class='timeline-node'><div class='timeline-phase'>Phase 4: Validation & UAT</div><div class='timeline-duration'>Weeks 15 - 18</div><div class='timeline-desc'>Run automated checks, perform full User Acceptance Testing cycles, and complete final user training.</div></div></div>"
+      }
+    ]
+  };
+
+  const initialUatData = {
+    title: "User Acceptance Testing (UAT) Plan",
+    client: "KaarTech Enterprise Solutions",
+    sections: [
+      {
+        id: "uat_summary",
+        title: "Executive Summary",
+        icon: "fa-clipboard-check",
+        content: "This document defines the comprehensive User Acceptance Testing (UAT) plan for the SAP S/4HANA Go-Live phase. The main objective is to systematically validate core business process workflows, custom Fiori UI layouts, and high-performance in-memory transactional processing against actual business operating expectations. Successful completion of this plan is a critical gatekeeper for production deployment, ensuring full operational readiness, compliance, and zero post-go-live operational disruption.<p>To ensure high quality, the validation squad has mapped end-to-end integration threads across global production lines. Testing will cover functional accuracy under extreme workloads, checking database write performance, ledger postings, and automated material syncs. Key stakeholders from manufacturing, supply chain, and FICO will actively drive execution, logging discrepancies in real time to secure sign-off.</p>"
+      },
+      {
+        id: "uat_strategy",
+        title: "UAT Strategy & Scope",
+        icon: "fa-gauge-high",
+        content: "<ul><li><strong>Business Scenario Validation:</strong> Focused on end-to-end processing across Finance (FICO), Sales (SD), and Materials Management (MM). This ensures that real-world operations, such as order fulfilment and physical scanner reconciliations, flow dynamically through the target cloud architecture.</li><li><strong>Fiori UX Accessibility:</strong> Verifying role-based dashboards, personalized transaction tiles, mobile response times, and localized catalog translations for all business units.</li><li><strong>Performance Thresholds:</strong> Testing high-volume database query peaks during peak operational hours to guarantee that average transaction response times remain below 1.5 seconds.</li><li><strong>Regression Testing Safeguards:</strong> Running automated regression suites on standard and custom code blocks (Z-tables) after bug remediations to prevent structural blocks or custom code regressions.</li><li><strong>User Sign-off:</strong> Departmental heads must actively verify and sign off on all designated critical scenarios prior to the official cutover window.</li></ul><p>Our strategy also embeds specific entry gates: the environment must have a 99% master data sync from ECC, all previous integration testing phases must be completed with zero critical defects outstanding, and all testers must complete their Fiori navigation certification. Any defect discovered during UAT will follow a strict triage matrix to assess operational impact and code complexity before hotfixes are approved.</p>"
+      },
+      {
+        id: "uat_cases",
+        title: "Key UAT Test Scenarios",
+        icon: "fa-list-check",
+        content: "<p>The core business scenarios scheduled for customer sign-off. These represent end-to-end business threads containing standard transactions, custom reports, and third-party APIs:</p><table class='doc-table'><thead><tr><th>Test ID</th><th>Business Process Scenario</th><th>Role Owner</th><th>Expected Result</th><th>Severity</th></tr></thead><tbody><tr><td>UAT-OTC-01</td><td>Order-to-Cash (O2C) processing via Fiori</td><td>Sales Specialist</td><td>Order created, delivery note logged, invoice generated in &lt; 2s</td><td><span class='badge badge-high'>High</span></td></tr><tr><td>UAT-P2P-02</td><td>Procure-to-Pay (P2P) automated invoice matching</td><td>Procurement Mgr</td><td>Automated three-way match and payment release without errors</td><td><span class='badge badge-high'>High</span></td></tr><tr><td>UAT-FIN-03</td><td>General Ledger closing &amp; trial balance reports</td><td>Finance Director</td><td>Instantaneous in-memory database queries across multiple business entities</td><td><span class='badge badge-critical'>Critical</span></td></tr><tr><td>UAT-OT-04</td><td>Shop-floor OT integration &amp; material sync</td><td>Operations Supervisor</td><td>Physical stock scanner registers immediately inside SAP Core</td><td><span class='badge badge-medium'>Medium</span></td></tr></tbody></table><p>All test cases must be executed exactly as specified in the standard operating procedures. Testers are required to attach visual screenshots of the completed Fiori tiles and transaction success messages as verification proof before marking cases as passed inside the central workspace tracker.</p>"
+      },
+      {
+        id: "uat_timeline",
+        title: "UAT Execution Timeline & Gates",
+        icon: "fa-calendar-days",
+        content: "<div class='timeline-list'><div class='timeline-node'><div class='timeline-phase'>Phase 1: Environment Readiness &amp; Data Prep</div><div class='timeline-duration'>Weeks 1 - 2</div><div class='timeline-desc'>Construct sandbox test beds, refresh transactional data, and provision Fiori testing login keys.</div></div><div class='timeline-node'><div class='timeline-phase'>Phase 2: Core UAT Execution Cycle 1</div><div class='timeline-duration'>Weeks 3 - 4</div><div class='timeline-desc'>Execute key transactional workflows and document standard/custom code system bugs.</div></div><div class='timeline-node'><div class='timeline-phase'>Phase 3: Bug Remediation &amp; Cycle 2</div><div class='timeline-duration'>Weeks 5 - 6</div><div class='timeline-desc'>Remediate Z-table code locks and execute regression test scripts to verify fixes.</div></div><div class='timeline-node'><div class='timeline-phase'>Phase 4: Stakeholder Sign-Off &amp; Go-Live Prep</div><div class='timeline-duration'>Week 7</div><div class='timeline-desc'>Obtain departmental head sign-offs and execute final cutover plan checklists.</div></div></div><p>We enforce strict stage-gates between phases. Progression from Cycle 1 to Cycle 2 requires that all Critical severity defects have been successfully refactored and re-tested. Final approval requires a 100% pass rate on High and Critical scenarios and a signed executive authorization from the steering committee.</p>"
+      }
+    ]
+  };
+
+  const initialFrsData = {
+    title: "Functional Requirements Specification (FRS)",
+    client: "KaarTech Enterprise Solutions",
+    sections: [
+      {
+        id: "frs_summary",
+        title: "Executive Summary",
+        icon: "fa-gears",
+        content: "This Functional Requirements Specification (FRS) provides a highly detailed roadmap for standard and custom module integrations in the target SAP S/4HANA system. By defining explicit functional rules for key modules (FICO, MM, SD), this document guides application development, testing configurations, and security authorization setups, ensuring full alignment with enterprise workflows.<p>The modern FRS acts as the primary blueprint for developers, functional consultants, and business analysts. By translating strategic business needs into low-level configuration steps, we prevent scope creep, minimize development rework by 40%, and align with SAP's standard Clean Core recommendations.</p>"
+      },
+      {
+        id: "frs_architecture",
+        title: "Functional Scope & Architecture",
+        icon: "fa-network-wired",
+        content: "<ul><li><strong>Process Scope:</strong> End-to-end standard transaction routing, modular master data structures, and cross-application document flow (Sales Order -> Delivery -> Billing).</li><li><strong>Fiori UX Guidelines:</strong> Role-based personalized tiles, standard catalog configurations, custom semantic objects, and responsive dashboard flows.</li><li><strong>Security Mapping:</strong> Enterprise-wide user authorization groups based on standard SOD (Segregation of Duties) models and role-specific GRC configurations.</li><li><strong>Standard Core Isolation:</strong> Eliminating direct core modifications (Z-tables) by implementing side-by-side extensions using the SAP Business Technology Platform (BTP).</li></ul><p>We enforce a strict extension model: standard Fiori apps must be utilized first. Custom UI creation is only authorized when specific, certified user-journey gaps are identified. All custom interfaces must inherit the standard SAP Fiori Horizon theme classes to ensure design uniformity.</p>"
+      },
+      {
+        id: "frs_matrix",
+        title: "Functional Requirements Matrix",
+        icon: "fa-table-list",
+        content: "<p>Standard functional requirements prioritized for the modern implementation wave. These have been approved by the steering committee:</p><table class='doc-table'><thead><tr><th>Req ID</th><th>Module Focus</th><th>Functional Requirement Description</th><th>Priority</th><th>Complexity</th></tr></thead><tbody><tr><td>FRS-FICO-01</td><td>Finance</td><td>Real-time cost center ledger posting with automatic regional tax calculations</td><td><span class='badge badge-high'>High</span></td><td>Medium</td></tr><tr><td>FRS-MM-02</td><td>Materials Mgmt</td><td>Automated reorder point threshold triggers connected with global supplier APIs</td><td><span class='badge badge-critical'>Critical</span></td><td>High</td></tr><tr><td>FRS-SD-03</td><td>Sales &amp; Dist</td><td>Instantaneous stock availability checks (aATP) during mobile quote drafting</td><td><span class='badge badge-high'>High</span></td><td>High</td></tr><tr><td>FRS-UX-04</td><td>Fiori UX</td><td>Deploy custom responsive catalog tiles for purchase requisition sign-offs</td><td><span class='badge badge-medium'>Medium</span></td><td>Low</td></tr></tbody></table><p>Each requirement must be verified inside the designated quality assurance sandbox through custom mock transactional uploads. The functional architect must sign off on unit test results before promoting configurations to the central regression pipeline.</p>"
+      }
+    ]
+  };
+
+  const initialBrdData = {
+    title: "Business Requirements Document (BRD)",
+    client: "KaarTech Enterprise Solutions",
+    sections: [
+      {
+        id: "brd_vision",
+        title: "Project Vision & Context",
+        icon: "fa-lightbulb",
+        content: "This Business Requirements Document (BRD) establishes the high-level business vision and core goals for our digital core modernization. The target is to replace fragmented legacy transactional systems with a unified, cloud-ready digital backbone, reducing overall operational costs, speeding up reporting, and empowering management with instant business performance intelligence.<p>By transitioning to an in-memory database architecture, KaarTech Enterprise will eliminate batch processing, establish a single source of truth (Universal Journal), and enable predictive forecasting models. This strategic upgrade directly positions the organization to scale and integrate AI-driven operational tools.</p>"
+      },
+      {
+        id: "brd_stakeholders",
+        title: "Business Stakeholder Analysis",
+        icon: "fa-users-gear",
+        content: "<ul><li><strong>C-Suite Executives:</strong> Require instant financial closing, real-time KPI indicators, global asset visibility, and automated compliance auditing.</li><li><strong>Operational Managers:</strong> Require automated inventory alerts, optimized shipping timetables, automated supplier lead matching, and reduced manual spreadsheet overheads.</li><li><strong>IT Department:</strong> Target standard support simplification, retired custom codes, standard patch upgrades, and lower overall system maintenance costs.</li></ul><p>The primary success metric is the reduction of total cost of ownership (TCO) by 25% and accelerating month-end close cycles from 5 days down to a single operational day. Stakeholders from all regions have contributed to these design constraints.</p>"
+      },
+      {
+        id: "brd_requirements",
+        title: "Core Business Requirements Matrix",
+        icon: "fa-list-check",
+        content: "<p>Critical high-level business requirements gathered from cross-departmental workshops and signed off by regional sponsors:</p><table class='doc-table'><thead><tr><th>Req ID</th><th>Business Requirement / Need</th><th>Stakeholder Value</th><th>Priority</th></tr></thead><tbody><tr><td>BRD-REQ-01</td><td>Instantaneous consolidated financial reporting across multi-national units</td><td>Accelerates audit and quarterly planning cycles by 35%</td><td><span class='badge badge-critical'>Critical</span></td></tr><tr><td>BRD-REQ-02</td><td>Fully unified customer procurement history dashboard</td><td>Increases customer satisfaction and cross-selling potentials</td><td><span class='badge badge-high'>High</span></td></tr><tr><td>BRD-REQ-03</td><td>Standardized warehouse dispatch automation across operations</td><td>Drastically decreases manual scheduling overheads and errors</td><td><span class='badge badge-high'>High</span></td></tr><tr><td>BRD-REQ-04</td><td>Zero-downtime cutover timeline with safe rollback contingencies</td><td>Protects running retail/manufacturing operations from halts</td><td><span class='badge badge-critical'>Critical</span></td></tr></tbody></table><p>All requirements will be actively tracked inside our central tracing database. Functional specifications (FRS) must map directly to these business needs to guarantee 100% architectural alignment and prevent scope creep.</p>"
+      }
+    ]
+  };
+
+  const initialCharterData = {
+    title: "Project Charter",
+    client: "KaarTech Enterprise Solutions",
+    sections: [
+      {
+        id: "charter_summary",
+        title: "Executive Summary & Background",
+        icon: "fa-award",
+        content: "This Project Charter officially authorizes the SAP Modernization Initiative, defining high-level objectives, key stakeholders, and project governance framework. By establishing clear roles, scopes, and success criteria, this charter serves as the primary authorization guide and agreement between business owners and the integration partners.<p>Our historical systems have served the enterprise well, but now present significant support constraints. This initiative modernizes our foundational structures, replacing legacy platforms with a highly responsive, clean-core hybrid cloud setup to fuel our global expansion plans.</p>"
+      },
+      {
+        id: "charter_objectives",
+        title: "Project Objectives & KPI Metrics",
+        icon: "fa-chart-line",
+        content: "<ul><li><strong>Operational Excellence:</strong> Reduce manual reporting cycles by 40% using automated SAP Fiori standard applications.</li><li><strong>System Optimization:</strong> Achieve a 50% database volume footprint reduction using SAP HANA data compression.</li><li><strong>Project Timetable:</strong> Complete entire sandbox, development, QA, and production migrations inside designated milestones.</li><li><strong>Clean Core Adherence:</strong> Retain standard setups, eliminating custom Z-table clutter by 45%.</li></ul><p>The steering committee will evaluate project performance at the end of each stage-gate, requiring certified business approvals before releasing funds for subsequent execution phases.</p>"
+      },
+      {
+        id: "charter_directory",
+        title: "Project Stakeholder Directory",
+        icon: "fa-id-card",
+        content: "<p>Primary project leadership directory and key governance roles approved by the executive board:</p><table class='doc-table'><thead><tr><th>Project Role</th><th>Assigned Leader</th><th>Core Responsibility / Governance Area</th></tr></thead><tbody><tr><td>Executive Sponsor</td><td>Marcus Sterling</td><td>Financial approvals, executive updates, and high-level steering</td></tr><tr><td>Project Manager</td><td>Sarah Jenkins</td><td>Timeline tracking, resource management, and risk mitigations</td></tr><tr><td>SAP Solution Architect</td><td>Anand Kumar</td><td>Technical blueprints, system design, and migration pipelines</td></tr><tr><td>Quality Assurance Lead</td><td>Elena Rostova</td><td>UAT execution, validation audits, and regression sign-offs</td></tr></tbody></table><p>All escalations regarding technical boundaries, budget re-allocations, or timeline adjustments will be routed to the Project Manager and signed off by the Executive Sponsor in writing.</p>"
       }
     ]
   };
@@ -133,8 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Initial Setup ---
   initTheme();
   setupEventListeners();
-  addRecentConversation("SAP Migration Assessment", true);
-  addRecentConversation("BRD Creation - Supply Chain", false);
+  loadAllConversations();
 
   // --- Theme Controller ---
   function initTheme() {
@@ -226,7 +333,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   function setupEventListeners() {
-    newChatBtn.addEventListener('click', resetChatWorkspace);
+    newChatBtn.addEventListener('click', () => resetChatWorkspace(true));
     themeToggleBtn.addEventListener('click', toggleTheme);
     copyJsonBtn.addEventListener('click', copyJsonToClipboard);
     if (fullscreenDocBtn) {
@@ -239,14 +346,15 @@ document.addEventListener('DOMContentLoaded', () => {
     searchChats.addEventListener('input', (e) => {
       const query = e.target.value.toLowerCase();
       document.querySelectorAll('.conversation-item').forEach(item => {
-        const text = item.textContent.toLowerCase();
+        const titleSpan = item.querySelector('.conversation-main-info span');
+        const text = titleSpan ? titleSpan.textContent.toLowerCase() : item.textContent.toLowerCase();
         item.style.display = text.includes(query) ? 'flex' : 'none';
       });
     });
   }
 
   // --- Reset Workspace ---
-  function resetChatWorkspace() {
+  function resetChatWorkspace(showToastMessage = true) {
     chatMessages.innerHTML = '';
     chatMessages.appendChild(welcomeState);
     welcomeState.classList.remove('hidden');
@@ -260,9 +368,17 @@ document.addEventListener('DOMContentLoaded', () => {
     docState = { title: "", client: "KaarTech Enterprise", date: new Date().toLocaleDateString('en-US'), sections: [] };
     versions = [];
     currentPromptIndex = 0;
+
+    currentChatId = null;
+    activeMessages = [];
+    localStorage.removeItem('ktern_active_chat_id');
+    updateSidebarListOnly();
+
     updateJsonViewer();
     updateVersionsTab();
-    showToast("New conversational workspace created", "info");
+    if (showToastMessage) {
+      showToast("New conversational workspace created", "info");
+    }
   }
 
   // --- Chat Input Submission Manager ---
@@ -292,7 +408,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --- Message Appender ---
-  function appendMessage(text, sender) {
+  function appendMessage(text, sender, saveToState = true) {
     const msgDiv = document.createElement('div');
     msgDiv.className = `message ${sender}`;
 
@@ -328,13 +444,22 @@ document.addEventListener('DOMContentLoaded', () => {
     msgDiv.appendChild(contentDiv);
     chatMessages.appendChild(msgDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    if (saveToState) {
+      if (!currentChatId) {
+        currentChatId = 'chat_' + Date.now();
+      }
+      activeMessages.push({ sender, text });
+      saveActiveChat();
+    }
+
     return bubble;
   }
 
   // --- Multi-Agent Pipeline Simulator ---
   function executeMultiAgentPipeline(userPrompt) {
     // 1. Show dynamic loading assistant bubble
-    const assistantBubble = appendMessage('<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>', 'assistant');
+    const assistantBubble = appendMessage('<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>', 'assistant', false);
 
     // 2. Initialize Agent Tab UI
     tabContentAgents.innerHTML = `
@@ -426,7 +551,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --- Response Generator / Document Modifiers ---
-  function streamAIResponse(prompt, chatBubbleElement) {
+  async function streamAIResponse(prompt, chatBubbleElement) {
     let replyText = "";
     let updateDescription = "";
 
@@ -464,10 +589,63 @@ document.addEventListener('DOMContentLoaded', () => {
       updateDescription = "Embedded cloud landscape architecture blueprint";
     }
     else {
-      // 6. Default: SAP S/4HANA Migration Proposal Initialization
-      initializeDocument(initialProposalData);
-      replyText = "Here is the first draft of your <strong>SAP ECC to S/4HANA Migration Proposal</strong>. Our multi-agent squad has drafted the Executive Summary, Objectives, Project Scope, and a detailed 18-week Transition Timeline. The live document is now active in the workspace panel.";
-      updateDescription = "Initial Migration Proposal draft compiled";
+      // 6. Check if document is already initialized. If yes, this is a follow-up Q&A query!
+      if (docState.sections && docState.sections.length > 0) {
+        chatBubbleElement.innerHTML = '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
+        try {
+          const history = [];
+          const bubbles = document.querySelectorAll('.message-bubble');
+          const messages = document.querySelectorAll('.message');
+          for (let idx = Math.max(0, messages.length - 4); idx < messages.length - 1; idx++) {
+            const sender = messages[idx].classList.contains('user') ? 'user' : 'assistant';
+            const text = bubbles[idx] ? bubbles[idx].textContent : '';
+            history.push({ sender, text });
+          }
+
+          const response = await fetch('/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: prompt,
+              history: history,
+              doc_context: docState
+            })
+          });
+          const data = await response.json();
+          replyText = data.reply;
+        } catch (err) {
+          replyText = `As your KTern consulting assistant, I've analyzed your query: '${prompt}'. To adjust the timeline to 10 weeks, type 'reduce timeline'. To see risk items, type 'show risks'.`;
+        }
+        updateDescription = ""; // General Q&A does not modify the document
+      } else {
+        // Decide which template to compile based on keywords in the initial prompt!
+        if (cleanPrompt.includes('uat') || cleanPrompt.includes('user acceptance')) {
+          initializeDocument(initialUatData);
+          replyText = "Here is the first draft of your <strong>User Acceptance Testing (UAT) Plan</strong>. Our multi-agent squad has prepared the UAT Strategy, testing scopes, detailed key business scenarios, and the execution timelines. The document is active in the workspace panel.";
+          updateDescription = "Initial UAT Test Plan compiled";
+        }
+        else if (cleanPrompt.includes('frs') || cleanPrompt.includes('functional requirements')) {
+          initializeDocument(initialFrsData);
+          replyText = "Here is the first draft of your <strong>Functional Requirements Specification (FRS)</strong>. Our content and formatting agents have drafted the Functional Architecture, Module Scope, and Fiori UI enhancements list. The document is loaded in the workspace.";
+          updateDescription = "Initial Functional Specification compiled";
+        }
+        else if (cleanPrompt.includes('brd') || cleanPrompt.includes('business requirements')) {
+          initializeDocument(initialBrdData);
+          replyText = "Here is the first draft of your <strong>Business Requirements Document (BRD)</strong>. Our coordination squad has mapped the business objectives, core requirements matrix, stakeholder impact metrics, and out-of-scope parameters. The document is loaded in the workspace.";
+          updateDescription = "Initial BRD Document compiled";
+        }
+        else if (cleanPrompt.includes('charter') || cleanPrompt.includes('project charter')) {
+          initializeDocument(initialCharterData);
+          replyText = "Here is the first draft of your <strong>Project Charter</strong>. Our planning squad has established the project purpose, key targets, organizational directory, and project governance stages. The document is loaded in the workspace.";
+          updateDescription = "Initial Project Charter compiled";
+        }
+        else {
+          // Default: SAP ECC to S/4HANA Migration Proposal
+          initializeDocument(initialProposalData);
+          replyText = "Here is the first draft of your <strong>SAP ECC to S/4HANA Migration Proposal</strong>. Our multi-agent squad has drafted the Executive Summary, Objectives, Project Scope, and a detailed 18-week Transition Timeline. The live document is now active in the workspace panel.";
+          updateDescription = "Initial Migration Proposal draft compiled";
+        }
+      }
     }
 
     // Stream the assistant reply token-by-token
@@ -483,6 +661,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         // Complete streaming
         followupBar.classList.remove('hidden');
+        activeMessages.push({ sender: 'assistant', text: replyText });
         saveDocumentVersion(updateDescription);
         showToast("Workspace updated live!", "success");
       }
@@ -594,38 +773,129 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --- Inline Section AI Assistants ---
-  function aiAssistExpand(sectionId, bodyElement) {
-    showToast("Expanding section content...", "info");
+  async function aiAssistExpand(sectionId, bodyElement) {
+    showToast("Expanding section via Gemini...", "info");
     bodyElement.style.opacity = '0.5';
-    setTimeout(() => {
+    
+    // Find the section object to know its title and content
+    const sec = docState.sections.find(s => s.id === sectionId);
+    const title = sec ? sec.title : sectionId;
+    
+    try {
+      const response = await fetch('/assist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          section_title: title,
+          section_content: bodyElement.innerHTML,
+          action: 'expand',
+          doc_title: docState.title
+        })
+      });
+      const data = await response.json();
+      if (data.success && data.content) {
+        bodyElement.innerHTML = data.content;
+        if (sec) sec.content = data.content; // Sync local state!
+        showToast("Section expanded successfully!", "success");
+        saveDocumentVersion(`Expanded ${title} section`);
+        updateJsonViewer();
+      } else {
+        throw new Error(data.error || "Generation failed");
+      }
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to expand section. Using template default.", "warning");
       const orig = bodyElement.innerHTML;
-      bodyElement.innerHTML = orig + "<p>Additionally, our orchestration tool monitors migration pathways to run safety fallbacks. This optimizes data consistency across all custom legacy code setups and validates business workflows with absolute zero friction.</p>";
+      const fallback = orig + "<p>Additionally, our enterprise orchestration tools monitor the migration pathways in the target environments to automatically trigger safety fallbacks. We perform rigorous custom code checks, Z-table analysis, and data mapping validations. This strategy completely guarantees 100% data consistency, eliminates standard transaction locks, and facilitates absolute zero-friction cutover windows. Furthermore, business process alignment dashboards are deployed to give key stakeholders real-time visibility into active operational throughput during migration cycles.</p>";
+      bodyElement.innerHTML = fallback;
+      if (sec) sec.content = fallback;
+      saveDocumentVersion(`Expanded ${title} section (Fallback)`);
+      updateJsonViewer();
+    } finally {
       bodyElement.style.opacity = '1';
-      showToast("Section expanded successfully!", "success");
-      saveDocumentVersion(`Expanded ${sectionId} section`);
-    }, 1200);
+    }
   }
 
-  function aiAssistShorten(sectionId, bodyElement) {
-    showToast("Simplifying copy...", "info");
+  async function aiAssistShorten(sectionId, bodyElement) {
+    showToast("Condensing section via Gemini...", "info");
     bodyElement.style.opacity = '0.5';
-    setTimeout(() => {
-      bodyElement.innerHTML = "<p>Accelerated digital modernization upgrading ECC to SAP S/4HANA core. We guarantee zero data loss and optimized timeline delivery using automated validation suites.</p>";
+    
+    const sec = docState.sections.find(s => s.id === sectionId);
+    const title = sec ? sec.title : sectionId;
+    
+    try {
+      const response = await fetch('/assist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          section_title: title,
+          section_content: bodyElement.innerHTML,
+          action: 'shorten',
+          doc_title: docState.title
+        })
+      });
+      const data = await response.json();
+      if (data.success && data.content) {
+        bodyElement.innerHTML = data.content;
+        if (sec) sec.content = data.content;
+        showToast("Section condensed!", "success");
+        saveDocumentVersion(`Shortened ${title} section`);
+        updateJsonViewer();
+      } else {
+        throw new Error(data.error || "Generation failed");
+      }
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to condense. Using fallback.", "warning");
+      const fallback = "<p>Modernized enterprise platform with zero operational downtime. All processes are fully optimized and verified using real-time validation tools.</p>";
+      bodyElement.innerHTML = fallback;
+      if (sec) sec.content = fallback;
+      saveDocumentVersion(`Shortened ${title} section (Fallback)`);
+      updateJsonViewer();
+    } finally {
       bodyElement.style.opacity = '1';
-      showToast("Section condensed!", "success");
-      saveDocumentVersion(`Shortened ${sectionId} section`);
-    }, 1200);
+    }
   }
 
-  function aiAssistFormalize(sectionId, bodyElement) {
-    showToast("Applying corporate phrasing...", "info");
+  async function aiAssistFormalize(sectionId, bodyElement) {
+    showToast("Formalizing section via Gemini...", "info");
     bodyElement.style.opacity = '0.5';
-    setTimeout(() => {
-      bodyElement.innerHTML = "<p>Pursuant to enterprise mandates, this roadmap enforces strict alignment with the standard clean-core model. All transactional architectures will deploy standard REST interfaces to guarantee robust operational continuity and security.</p>";
+    
+    const sec = docState.sections.find(s => s.id === sectionId);
+    const title = sec ? sec.title : sectionId;
+    
+    try {
+      const response = await fetch('/assist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          section_title: title,
+          section_content: bodyElement.innerHTML,
+          action: 'formalize',
+          doc_title: docState.title
+        })
+      });
+      const data = await response.json();
+      if (data.success && data.content) {
+        bodyElement.innerHTML = data.content;
+        if (sec) sec.content = data.content;
+        showToast("Section formalized successfully!", "success");
+        saveDocumentVersion(`Formalized ${title} section`);
+        updateJsonViewer();
+      } else {
+        throw new Error(data.error || "Generation failed");
+      }
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to formalize. Using fallback.", "warning");
+      const fallback = "<p>Pursuant to organizational mandates, all system components will enforce strict standard configurations. Clean-core execution rules govern all standard custom extensions to secure structural integrity.</p>";
       bodyElement.style.opacity = '1';
-      showToast("Section formalized!", "success");
-      saveDocumentVersion(`Formalized ${sectionId} section`);
-    }, 1200);
+      if (sec) sec.content = fallback;
+      saveDocumentVersion(`Formalized ${title} section (Fallback)`);
+      updateJsonViewer();
+    } finally {
+      bodyElement.style.opacity = '1';
+    }
   }
 
   function enableInlineEditing(sectionId, bodyElement) {
@@ -644,6 +914,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       showToast("Changes saved locally", "success");
       updateJsonViewer();
+      saveActiveChat();
     });
   }
 
@@ -658,6 +929,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     versions.unshift(newVer); // add to top of lists
     updateVersionsTab();
+    saveActiveChat();
   }
 
   function updateVersionsTab() {
@@ -811,11 +1083,266 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // --- Mock Recent Conversation items ---
-  function addRecentConversation(title, isActive) {
-    const btn = document.createElement('button');
-    btn.className = `conversation-item ${isActive ? 'active' : ''}`;
-    btn.innerHTML = `<i class="fa-solid fa-message"></i> <span>${title}</span>`;
-    conversationList.appendChild(btn);
+  // --- Dynamic Chat History Management ---
+  function loadAllConversations() {
+    conversationList.innerHTML = '';
+    const stored = localStorage.getItem('ktern_conversations');
+    const conversations = stored ? JSON.parse(stored) : [];
+    
+    currentChatId = localStorage.getItem('ktern_active_chat_id');
+    
+    if (conversations.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'sidebar-empty-state';
+      empty.innerHTML = `
+        <i class="fa-solid fa-message"></i>
+        <span>No dynamic chats yet.<br>Start a conversation to save!</span>
+      `;
+      conversationList.appendChild(empty);
+      
+      if (!currentChatId) {
+        resetChatWorkspace(false);
+      }
+      return;
+    }
+    
+    conversations.sort((a, b) => b.timestamp - a.timestamp);
+    
+    conversations.forEach(chat => {
+      const isActive = chat.id === currentChatId;
+      const item = document.createElement('div');
+      item.className = `conversation-item ${isActive ? 'active' : ''}`;
+      item.setAttribute('data-id', chat.id);
+      
+      item.innerHTML = `
+        <div class="conversation-main-info">
+          <i class="fa-solid fa-message"></i>
+          <span>${chat.title}</span>
+        </div>
+        <button class="delete-chat-btn" title="Delete conversation">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      `;
+      
+      item.addEventListener('click', () => {
+        selectConversation(chat.id);
+      });
+      
+      item.querySelector('.delete-chat-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteConversation(chat.id);
+      });
+      
+      conversationList.appendChild(item);
+    });
+    
+    if (currentChatId) {
+      const activeChat = conversations.find(c => c.id === currentChatId);
+      if (activeChat) {
+        rehydrateWorkspace(activeChat);
+      } else {
+        currentChatId = null;
+        localStorage.removeItem('ktern_active_chat_id');
+        resetChatWorkspace(false);
+      }
+    } else {
+      resetChatWorkspace(false);
+    }
+  }
+
+  function saveActiveChat() {
+    if (!currentChatId) return;
+    
+    const stored = localStorage.getItem('ktern_conversations');
+    let conversations = stored ? JSON.parse(stored) : [];
+    
+    let activeChat = conversations.find(c => c.id === currentChatId);
+    
+    if (!activeChat) {
+      const firstUserMsg = activeMessages.find(m => m.sender === 'user');
+      const title = firstUserMsg ? generateChatTitle(firstUserMsg.text) : 'New Conversation';
+      
+      activeChat = {
+        id: currentChatId,
+        title: title,
+        timestamp: Date.now(),
+        messages: activeMessages,
+        docState: docState,
+        versions: versions
+      };
+      conversations.push(activeChat);
+    } else {
+      activeChat.timestamp = Date.now();
+      activeChat.messages = activeMessages;
+      activeChat.docState = docState;
+      activeChat.versions = versions;
+      
+      if (activeChat.title === 'New Conversation' || activeChat.title.startsWith('New Chat')) {
+        const firstUserMsg = activeMessages.find(m => m.sender === 'user');
+        if (firstUserMsg) {
+          activeChat.title = generateChatTitle(firstUserMsg.text);
+        }
+      }
+    }
+    
+    localStorage.setItem('ktern_conversations', JSON.stringify(conversations));
+    localStorage.setItem('ktern_active_chat_id', currentChatId);
+    
+    updateSidebarListOnly();
+  }
+
+  function updateSidebarListOnly() {
+    const stored = localStorage.getItem('ktern_conversations');
+    const conversations = stored ? JSON.parse(stored) : [];
+    
+    if (conversations.length === 0) {
+      conversationList.innerHTML = `
+        <div class="sidebar-empty-state">
+          <i class="fa-solid fa-message"></i>
+          <span>No dynamic chats yet.<br>Start a conversation to save!</span>
+        </div>
+      `;
+      return;
+    }
+    
+    conversations.sort((a, b) => b.timestamp - a.timestamp);
+    
+    conversationList.innerHTML = '';
+    conversations.forEach(chat => {
+      const isActive = chat.id === currentChatId;
+      const item = document.createElement('div');
+      item.className = `conversation-item ${isActive ? 'active' : ''}`;
+      item.setAttribute('data-id', chat.id);
+      
+      item.innerHTML = `
+        <div class="conversation-main-info">
+          <i class="fa-solid fa-message"></i>
+          <span>${chat.title}</span>
+        </div>
+        <button class="delete-chat-btn" title="Delete conversation">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      `;
+      
+      item.addEventListener('click', () => {
+        selectConversation(chat.id);
+      });
+      
+      item.querySelector('.delete-chat-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteConversation(chat.id);
+      });
+      
+      conversationList.appendChild(item);
+    });
+  }
+
+  function generateChatTitle(prompt) {
+    if (prompt.includes("SAP ECC to S/4HANA migration proposal") || prompt.includes("Generate a comprehensive SAP")) {
+      return "SAP Migration Proposal";
+    }
+    if (prompt.includes("Functional Requirements Specification") || prompt.includes("FRS")) {
+      return "FRS Generator";
+    }
+    if (prompt.includes("Business Requirements Document") || prompt.includes("BRD")) {
+      return "BRD Creation";
+    }
+    if (prompt.includes("Project Charter")) {
+      return "Project Charter";
+    }
+    if (prompt.includes("User Acceptance Testing") || prompt.includes("UAT")) {
+      return "UAT Plan";
+    }
+
+    let clean = prompt.trim();
+    clean = clean.replace(/[#_*`\[\]]/g, '');
+    if (clean.length > 28) {
+      return clean.substring(0, 25) + '...';
+    }
+    return clean;
+  }
+
+  function selectConversation(chatId) {
+    if (chatId === currentChatId) return;
+    
+    currentChatId = chatId;
+    localStorage.setItem('ktern_active_chat_id', chatId);
+    
+    const stored = localStorage.getItem('ktern_conversations');
+    const conversations = stored ? JSON.parse(stored) : [];
+    const chat = conversations.find(c => c.id === chatId);
+    
+    if (chat) {
+      rehydrateWorkspace(chat);
+      showToast(`Loaded: ${chat.title}`, "info");
+    }
+    
+    updateSidebarListOnly();
+  }
+
+  function rehydrateWorkspace(chat) {
+    activeMessages = chat.messages || [];
+    chatMessages.innerHTML = '';
+    
+    if (activeMessages.length > 0) {
+      welcomeState.classList.add('hidden');
+      activeMessages.forEach(msg => {
+        appendMessageUI(msg.text, msg.sender);
+      });
+      followupBar.classList.remove('hidden');
+    } else {
+      chatMessages.appendChild(welcomeState);
+      welcomeState.classList.remove('hidden');
+      followupBar.classList.add('hidden');
+    }
+    
+    docState = chat.docState || { title: "", client: "KaarTech Enterprise", date: new Date().toLocaleDateString('en-US'), sections: [] };
+    
+    if (docState.title !== "") {
+      docEmptyState.classList.add('hidden');
+      docContent.classList.remove('hidden');
+      downloadPdfBtn.disabled = false;
+      
+      docCoverTitle.textContent = docState.title;
+      docCoverClient.textContent = docState.client;
+      docCoverDate.textContent = docState.date;
+      
+      renderDocumentState();
+    } else {
+      docEmptyState.classList.remove('hidden');
+      docContent.classList.add('hidden');
+      downloadPdfBtn.disabled = true;
+      docPanelStatus.textContent = "Awaiting input...";
+      docSections.innerHTML = '';
+    }
+    
+    versions = chat.versions || [];
+    updateVersionsTab();
+    updateJsonViewer();
+    
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  function appendMessageUI(text, sender) {
+    appendMessage(text, sender, false);
+  }
+
+  function deleteConversation(chatId) {
+    if (!confirm("Are you sure you want to delete this conversation?")) return;
+    
+    const stored = localStorage.getItem('ktern_conversations');
+    let conversations = stored ? JSON.parse(stored) : [];
+    
+    conversations = conversations.filter(c => c.id !== chatId);
+    localStorage.setItem('ktern_conversations', JSON.stringify(conversations));
+    
+    if (currentChatId === chatId) {
+      currentChatId = null;
+      localStorage.removeItem('ktern_active_chat_id');
+      resetChatWorkspace(false);
+    }
+    
+    loadAllConversations();
+    showToast("Conversation deleted", "info");
   }
 });

@@ -701,6 +701,139 @@ def generate():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/chat', methods=['POST'])
+def chat():
+    data = request.json
+    message = data.get('message', '')
+    history = data.get('history', [])
+    doc_context = data.get('doc_context', {})
+    
+    if not message:
+        return jsonify({"error": "Message is required"}), 400
+        
+    try:
+        openrouter_key = os.getenv('OPENROUTER_API_KEY', '')
+        if not openrouter_key:
+            return jsonify({"reply": "KTern En offline assistant: I am ready to help refine your proposal. Try typing 'reduce timeline' to compress the schedule, or 'show risks' to append system hazards. Let me know what you'd like to discuss!"})
+            
+        doc_sections = [s.get('title', 'Section') for s in doc_context.get('sections', [])] if isinstance(doc_context, dict) else []
+        prompt = f"""
+        You are KTern En, the expert enterprise AI migration and systems consulting assistant by KaarTech.
+        The user is discussing a proposal or document in the workspace.
+        
+        Current Document Title in Workspace: {doc_context.get('title', 'SAP ECC to S/4HANA Migration Proposal')}
+        Current Document Sections: {json.dumps(doc_sections)}
+        
+        User's Message: {message}
+        
+        Reply with a highly professional, expert consulting tone. Do not use marketing clichés or buzzwords. Provide clean, actionable advice. If they are asking for changes to the document, advise them to use specific keywords in the chat (like 'reduce timeline', 'show project risks', 'manufacturing', or 'automation') so the workspace can compile them, or explain the solution clearly. Keep your response concise (within 150-200 words).
+        """
+        
+        headers = {
+            "Authorization": f"Bearer {openrouter_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "http://localhost:5000",
+            "X-Title": "KTern En Chatbot"
+        }
+        
+        messages = [{"role": "system", "content": "You are KTern En, a professional SAP consulting AI."}]
+        for h in history:
+            role = "user" if h.get("sender") == "user" else "assistant"
+            messages.append({"role": role, "content": h.get("text", "")})
+        messages.append({"role": "user", "content": prompt})
+        
+        payload = {
+            "model": AI_MODEL,
+            "max_tokens": 1000,
+            "messages": messages,
+            "temperature": 0.5
+        }
+        
+        r = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=20)
+        r.raise_for_status()
+        reply = r.json()['choices'][0]['message']['content']
+        return jsonify({"success": True, "reply": reply})
+        
+    except Exception as e:
+        print(f"Error in chat endpoint: {e}")
+        return jsonify({"reply": f"As your KTern consulting assistant, I've analyzed your query: '{message}'. To adjust the timeline to 10 weeks, type 'reduce timeline'. To see risk items, type 'show risks'."})
+
+
+@app.route('/assist', methods=['POST'])
+def assist():
+    data = request.json
+    section_title = data.get('section_title', '')
+    section_content = data.get('section_content', '')
+    action = data.get('action', 'expand')
+    doc_title = data.get('doc_title', 'SAP ECC to S/4HANA Migration Proposal')
+    
+    if not section_title:
+        return jsonify({"error": "Section title is required"}), 400
+        
+    try:
+        openrouter_key = os.getenv('OPENROUTER_API_KEY', '')
+        if not openrouter_key:
+            # Fallback offline templates
+            if action == 'expand':
+                expanded = section_content + f"<p>Additionally, our enterprise orchestration tools monitor the migration pathways in the target environments to automatically trigger safety fallbacks. We perform rigorous custom code checks, Z-table analysis, and data mapping validations. This strategy completely guarantees 100% data consistency, eliminates standard transaction locks, and facilitates absolute zero-friction cutover windows. Furthermore, business process alignment dashboards are deployed to give key stakeholders real-time visibility into active operational throughput during migration cycles.</p>"
+                return jsonify({"success": True, "content": expanded})
+            elif action == 'shorten':
+                return jsonify({"success": True, "content": f"<p>Modernized enterprise platform with zero operational downtime. All processes are fully optimized and verified using real-time validation tools.</p>"})
+            else:
+                return jsonify({"success": True, "content": f"<p>Pursuant to organizational mandates, all system components will enforce strict standard configurations. Clean-core execution rules govern all standard custom extensions to secure structural integrity.</p>"})
+
+        if action == 'expand':
+            instruction = "Rewrite and greatly expand the following HTML content to be 3 to 4 times longer. Make it extremely detailed, comprehensive, high-density, and professional. Cover specific SAP processes, transaction codes, architectures, validation checklists, and expert recommendations where applicable. You MUST output well-styled HTML matching the input's format (e.g. keeping <ul>, <li>, <table>, or <p> tags but making the copy extremely rich and dense). Do not wrap inside a ```html block, return only the raw HTML code."
+        elif action == 'shorten':
+            instruction = "Condense and simplify the following HTML content to be highly concise, punchy, and clear while retaining the essential details. Return only raw HTML."
+        else:
+            instruction = "Rewrite the following HTML content using an extremely polished, high-end corporate executive vocabulary perfect for a C-suite presentation. Retain the same length and keep the HTML markup. Return only raw HTML."
+
+        prompt = f"""
+        You are an elite enterprise architect and lead systems consultant by KaarTech.
+        
+        Document Context: {doc_title}
+        Section Title: {section_title}
+        Current Section Content (HTML): {section_content}
+        
+        Action requested: {action.upper()}
+        Instruction: {instruction}
+        """
+
+        headers = {
+            "Authorization": f"Bearer {openrouter_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "http://localhost:5000",
+            "X-Title": "KTern Section Assistant"
+        }
+        
+        payload = {
+            "model": AI_MODEL,
+            "max_tokens": 2000,
+            "messages": [
+                {"role": "system", "content": "You are a professional HTML-generating consulting assistant. Output ONLY valid, raw HTML without any markdown code block wrap."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.5
+        }
+        
+        r = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=30)
+        r.raise_for_status()
+        content = r.json()['choices'][0]['message']['content']
+        
+        # Clean up any potential markdown code blocks if returned
+        content = re.sub(r'^```html\s*', '', content)
+        content = re.sub(r'^```\s*', '', content)
+        content = re.sub(r'\s*```$', '', content)
+        
+        return jsonify({"success": True, "content": content.strip()})
+        
+    except Exception as e:
+        print(f"Error in assist endpoint: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+
 @app.route('/download/<filename>')
 def download_pdf(filename):
     return send_from_directory(PDF_DIR, filename)

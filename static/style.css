@@ -281,7 +281,7 @@ body {
   padding-right: 2px;
 }
 
-.template-item, .conversation-item {
+.template-item {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -299,16 +299,62 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.template-item i, .conversation-item i {
+.template-item i {
   width: 14px;
   font-size: 0.85rem;
   color: var(--text-sidebar-muted);
 }
-.template-item:hover, .conversation-item:hover {
+.template-item:hover {
   background-color: rgba(255, 255, 255, 0.05);
   color: #ffffff;
 }
-.template-item:hover i, .conversation-item:hover i {
+.template-item:hover i {
+  color: var(--brand-red);
+}
+
+.conversation-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: transparent;
+  border: none;
+  color: var(--text-sidebar-muted);
+  padding: 0.55rem 0.75rem;
+  border-radius: 6px;
+  text-align: left;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+  position: relative;
+  overflow: hidden;
+}
+.conversation-main-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.conversation-main-info i {
+  width: 14px;
+  font-size: 0.85rem;
+  color: var(--text-sidebar-muted);
+  flex-shrink: 0;
+}
+.conversation-main-info span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conversation-item:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+}
+.conversation-item:hover .conversation-main-info i {
   color: var(--brand-red);
 }
 .conversation-item.active {
@@ -316,8 +362,53 @@ body {
   color: #ffffff;
   border-left: 3px solid var(--brand-red);
 }
-.conversation-item.active i {
+.conversation-item.active .conversation-main-info i {
   color: var(--brand-red);
+}
+
+.delete-chat-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-sidebar-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, color 0.2s, background-color 0.2s;
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.conversation-item:hover .delete-chat-btn {
+  opacity: 0.7;
+}
+.conversation-item .delete-chat-btn:hover {
+  opacity: 1;
+  color: #ef4444 !important;
+  background-color: rgba(255, 255, 255, 0.15);
+}
+.delete-chat-btn i {
+  font-size: 0.8rem !important;
+  width: auto !important;
+}
+
+.sidebar-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+  text-align: center;
+  color: var(--text-sidebar-muted);
+  gap: 0.5rem;
+}
+.sidebar-empty-state i {
+  font-size: 1.25rem;
+  color: rgba(255, 255, 255, 0.15) !important;
+  width: auto !important;
+}
+.sidebar-empty-state span {
+  font-size: 0.75rem;
 }
 
 .sidebar-footer {
